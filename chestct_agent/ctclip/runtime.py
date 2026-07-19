@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 import sys
 import types
@@ -113,10 +114,24 @@ class CtClipRuntime:
             raise CtClipUnavailable("CT-CLIP requested CUDA, but PyTorch cannot access the GPU.")
         self.device = torch.device(device_name)
 
+        # Prefer an explicit local path, then the standard sibling models/cxrbert
+        # directory.  This keeps the protected CT-CLIP workflow offline after assets
+        # are provisioned and only falls back to the public Hub name for fresh setups.
+        configured_text_model = os.environ.get("CTCLIP_TEXT_MODEL_DIR", "").strip()
+        sibling_text_model = self.checkpoint.parent.parent / "cxrbert"
+        if configured_text_model and Path(configured_text_model).is_dir():
+            text_model_source = configured_text_model
+            text_model_kwargs = {"local_files_only": True}
+        elif sibling_text_model.is_dir():
+            text_model_source = str(sibling_text_model)
+            text_model_kwargs = {"local_files_only": True}
+        else:
+            text_model_source = "microsoft/BiomedVLP-CXR-BERT-specialized"
+            text_model_kwargs = {}
         self.tokenizer = BertTokenizer.from_pretrained(
-            "microsoft/BiomedVLP-CXR-BERT-specialized", do_lower_case=True
+            text_model_source, do_lower_case=True, **text_model_kwargs
         )
-        text_encoder = BertModel.from_pretrained("microsoft/BiomedVLP-CXR-BERT-specialized")
+        text_encoder = BertModel.from_pretrained(text_model_source, **text_model_kwargs)
         text_encoder.resize_token_embeddings(len(self.tokenizer))
         image_encoder = CTViT(
             dim=512,
