@@ -84,6 +84,38 @@ CT + 受控报告
 - 结果：`/root/summer_zhl/artifacts/acceptance/stage2_merged/train_7773_a_1/result.json`。
 - 日志：`/root/summer_zhl/artifacts/logs/acceptance_stage2_merged.log`。
 
+### 4.3 100 例展示覆盖集与 CT 证据消融
+
+为展示批量稳定性，另构造固定的 100 例展示覆盖集：原 50 例患者级留出集，加上用随机种子 `20260719` 从训练部分抽取的 50 例。该集合用于演示覆盖与接口稳定性；其中只有前 50 例可被视为原始留出评估，100 例总体的弱标签一致性不能表述为独立泛化性能。
+
+两臂均使用 Qwen3.5-9B + 最终 Stage-2 adapter、4-bit NF4、batch size 4、最大生成 512 token，并复用预计算 CT-CLIP 分数：
+
+| 指标 | 报告 + CT-CLIP 证据 | 移除 CT-CLIP 字段 |
+| --- | ---: | ---: |
+| 评估病例数 | 100 | 100 |
+| JSON 有效病例 | 100/100（100%） | 37/100（37%） |
+| 弱标签 Micro Precision | 0.883 | 不适用* |
+| 弱标签 Micro Recall | 0.645 | 不适用* |
+| 弱标签 Micro F1 | 0.745 | 不适用* |
+| CT 分数字段覆盖率 | 100%（800/800） | 无 CT 输入 |
+| CT 分数数值一致性 | 100%（800/800） | 无 CT 输入 |
+
+\* 移除 CT 字段后有 63 例无法解析为 JSON，其中包括 JSON 字符串未闭合、缺少逗号和值等错误。因此该臂不能作为公平的报告-only 性能指标；它是“训练输入结构消融”，说明 Stage-2 adapter 对 CT 证据字段及其结构有实际依赖。
+
+带 CT 证据臂的 8 个标签弱标签 F1 分别为：动脉壁钙化 0.698、肺不张 0.791、冠状动脉壁钙化 0.737、肺气肿 0.818、肺实变/阴影 0.765、淋巴结肿大 0.200、肺纤维化后遗改变 0.722、肺结节 0.918。淋巴结肿大的低值与其在该弱监督子集中的长尾情况相符，应在答辩中作为局限性说明，而不是选择性忽略。
+
+服务器结果目录：
+
+```text
+/root/summer_zhl/artifacts/llm_eval/stage2_demo_100/
+├── inputs/with_ctclip_100.jsonl
+├── inputs/report_only_100.jsonl
+├── with_ctclip/metrics.json
+├── with_ctclip/predictions.jsonl
+├── report_only/metrics.json
+└── report_only/predictions.jsonl
+```
+
 ## 5. 本轮修复
 
 在 PR 集成与服务器验收中识别并修复两项兼容问题：
