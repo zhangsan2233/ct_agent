@@ -4,31 +4,23 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
-# Local model weights and third-party CT-CLIP checkout.
 models/
-external/
-
-# CT-RATE downloads, NIfTI volumes, temporary dependency caches, and all
-# generated inference/training/evaluation outputs must remain local.
-data/
-dataset/
+external/*.zip
+external/*.part
+static/cases/
 artifacts/
-.deps/
-.remote_assets/
-*.nii
-*.nii.gz
+data/uploads/
+
+# Large, gated, generated, or machine-local assets.
+data/.cache/
+data/dataset/
+data/radgenome/
+external/
+logs/
+*.log
 *.pt
 *.pth
-*.safetensors
-*.bin
-
-# Credentials and local service/runtime traces.
-*.log
-*.err.log
-*.out.log
-streamlit.err.log
-streamlit.out.log
-api-server.err.log
-api-server.out.log
-
-static/cases/
+*.nii
+*.nii.gz
+*.zip
+*.tar.gz

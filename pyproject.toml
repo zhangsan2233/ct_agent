@@ -16,9 +16,19 @@ dependencies = [
   "joblib>=1.4.0",
   "pillow>=10.3.0",
   "nibabel>=5.2.0",
+  "SimpleITK>=2.4.0",
+  "python-multipart>=0.0.9",
   "langgraph>=0.2.0",
   "streamlit>=1.36.0",
-  "huggingface-hub>=0.24.0"
+  "huggingface-hub>=0.24.0",
+  "torch>=2.7.0",
+  "transformers>=4.51.0,<5",
+  "sentence-transformers>=5.0.0,<6",
+  "rank-bm25>=0.2.2",
+  "radgraph==0.1.18",
+  "graphviz>=0.20",
+  "mcp>=1.9,<2",
+  "qdrant-client>=1.12,<2"
 ]
 
 [project.optional-dependencies]
@@ -44,3 +54,6 @@ pythonpath = ["."]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["E402"]

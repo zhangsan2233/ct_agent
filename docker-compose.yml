@@ -1,0 +1,35 @@
+services:
+  api:
+    build: .
+    command: uvicorn chestct_agent.api.main:app --host 0.0.0.0 --port 8080
+    env_file:
+      - .env
+    environment:
+      EMBEDDING_MODEL_PATH: /app/models/qwen/Qwen3-Embedding-0.6B
+      RERANKER_MODEL_PATH: /app/models/qwen/Qwen3-Reranker-0.6B
+      CTCLIP_CHECKPOINT: /app/models/ctclip/CT-CLIP_v2.pt
+      CTCLIP_SOURCE_DIR: /app/external/CT-CLIP-main
+      CTCLIP_DEVICE: cpu
+      QDRANT_PATH: /app/artifacts/qdrant-api
+    volumes:
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+      - ./models:/app/models:ro
+      - ./external:/app/external:ro
+      - ./static:/app/static
+    ports:
+      - "8080:8080"
+
+  demo:
+    build: .
+    command: streamlit run demo/streamlit_app.py --server.address 0.0.0.0 --server.port 8501
+    environment:
+      CHESTCT_API_URL: http://api:8080
+    volumes:
+      - ./data:/app/data:ro
+      - ./artifacts:/app/artifacts:ro
+      - ./static:/app/static:ro
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api

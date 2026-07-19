@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import re
 
@@ -27,6 +28,20 @@ class CtPreprocessTool:
         path = Path(ct_volume_path)
         if not path.exists():
             return []
+
+        safe_case_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", case_id).strip("._") or "case"
+        out_dir = Path(self.settings.static_dir) / "cases" / safe_case_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        cached = self._load_cached_previews(path, out_dir)
+        if cached:
+            return cached
+        existing = sorted(out_dir.glob("slice_*_lung.png"))
+        volume_mtime_ns = path.stat().st_mtime_ns
+        if existing and all(image.stat().st_mtime_ns >= volume_mtime_ns for image in existing):
+            rendered = [str(image.as_posix()) for image in existing]
+            self._write_preview_cache(path, out_dir, rendered)
+            return rendered
+
         try:
             import nibabel as nib
 
@@ -35,9 +50,6 @@ class CtPreprocessTool:
         except Exception:
             return []
 
-        safe_case_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", case_id).strip("._") or "case"
-        out_dir = Path(self.settings.static_dir) / "cases" / safe_case_id
-        out_dir.mkdir(parents=True, exist_ok=True)
         axis = int(np.argmin(volume.shape))
         # Avoid nearly empty slices at the superior and inferior volume boundaries.
         indices = np.linspace(
@@ -58,4 +70,43 @@ class CtPreprocessTool:
             out_path = out_dir / f"slice_{idx:03d}_lung.png"
             image.save(out_path)
             rendered.append(str(out_path.as_posix()))
+        self._write_preview_cache(path, out_dir, rendered)
         return rendered
+
+    @staticmethod
+    def _load_cached_previews(volume_path: Path, out_dir: Path) -> list[str]:
+        metadata_path = out_dir / "preview_cache.json"
+        if not metadata_path.exists():
+            return []
+        try:
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            stat = volume_path.stat()
+            images = [str(item) for item in payload["images"]]
+            if payload.get("version") != 1:
+                return []
+            if payload.get("volume_size") != stat.st_size:
+                return []
+            if payload.get("volume_mtime_ns") != stat.st_mtime_ns:
+                return []
+            if not all(Path(image).exists() for image in images):
+                return []
+            return images
+        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+            return []
+
+    @staticmethod
+    def _write_preview_cache(volume_path: Path, out_dir: Path, images: list[str]) -> None:
+        try:
+            stat = volume_path.stat()
+            payload = {
+                "version": 1,
+                "volume_size": stat.st_size,
+                "volume_mtime_ns": stat.st_mtime_ns,
+                "images": images,
+            }
+            (out_dir / "preview_cache.json").write_text(
+                json.dumps(payload, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            return
