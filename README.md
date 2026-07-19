@@ -19,6 +19,7 @@ the project can run before the real dataset and remote model service are configu
 ## Model Download Policy
 
 完整的模型、adapter、CT-RATE 数据下载来源、落盘路径、受限资产说明和离线验证方法见 [docs/ASSET_SETUP.md](docs/ASSET_SETUP.md)。模型、数据和训练产物不会随本仓库提供。
+仓库中实际包含和明确排除的资产清单见 [docs/REPOSITORY_CONTENTS.md](docs/REPOSITORY_CONTENTS.md)。
 
 Do not download Qwen/Qwen3.6-35B-A3B to a normal laptop by default. Use an OpenAI-compatible
 remote endpoint, vLLM/SGLang server, cloud model service, or a hosted endpoint.

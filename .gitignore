@@ -12,7 +12,22 @@ external/
 # generated inference/training/evaluation outputs must remain local.
 data/
 dataset/
-artifacts/
+# Generated artifacts remain local by default. The exact three project-trained
+# inference assets below are intentionally versioned for reproducibility.
+artifacts/*
+!artifacts/text_classifier.joblib
+!artifacts/llm_qlora/
+artifacts/llm_qlora/*
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/adapter_model.safetensors
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/adapter_config.json
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/training_args.bin
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/adapter_model.safetensors
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/adapter_config.json
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/training_args.bin
 .deps/
 .remote_assets/
 *.nii
@@ -21,6 +36,15 @@ artifacts/
 *.pth
 *.safetensors
 *.bin
+# Re-include the three small/locally-trained artifact groups after the generic
+# binary patterns above. The two safetensors files are tracked by Git LFS.
+!artifacts/text_classifier.joblib
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/adapter_model.safetensors
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/adapter_config.json
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/training_args.bin
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/adapter_model.safetensors
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/adapter_config.json
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/training_args.bin
 
 # Credentials and local service/runtime traces.
 *.log
