@@ -14,10 +14,7 @@ import os
 from pathlib import Path
 import re
 import time
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from chestct_agent.ctclip import CtClipRuntime
+from typing import Any
 
 
 LABELS = [
@@ -124,7 +121,15 @@ class Stage2Agent:
     def _ctclip_scores(self, ct_path: Path) -> dict[str, float]:
         os.environ.update({"CTCLIP_TEXT_MODEL_DIR": str(self.paths.text_model_dir), "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"})
         from chestct_agent.ctclip import CtClipRuntime
-        self.ctclip = CtClipRuntime(self.paths.ctclip_checkpoint, self.paths.ctclip_source, self.device, use_fp16=True)
+        # The Stage-2 adapter was trained with the official CT-CLIP_v2 zero-shot
+        # evidence scores, not the optional CT-LiPro classifier head.
+        self.ctclip = CtClipRuntime(
+            self.paths.ctclip_checkpoint,
+            self.paths.ctclip_source,
+            self.device,
+            use_fp16=True,
+            variant="zeroshot",
+        )
         raw = self.ctclip.predict(str(ct_path))
         return {label: round(float(raw[label]), 4) for label in LABELS}
 
