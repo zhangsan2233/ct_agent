@@ -1,0 +1,70 @@
+{
+  "dataset": {
+    "source": "ibrahimhamamci/CT-RATE",
+    "selected_cases": 500,
+    "weak_supervision": true,
+    "report_text_exported": false,
+    "ct_images_exported": false,
+    "labels": [
+      "arterial_wall_calcification",
+      "atelectasis",
+      "coronary_artery_wall_calcification",
+      "emphysema",
+      "lung_opacity",
+      "lymphadenopathy",
+      "pulmonary_fibrotic_sequela",
+      "pulmonary_nodule"
+    ]
+  },
+  "split": {
+    "seed": 20260718,
+    "train_cases": 450,
+    "valid_cases": 50,
+    "held_out_case_set_sha256": "0299334088bbfc2b93dbe1b1b14b4f19f57b287c2be801b3ce788abaab02f622"
+  },
+  "ctclip": {
+    "frozen": true,
+    "checkpoint": "CT-CLIP_v2.pt",
+    "prediction_rows_exported": false
+  },
+  "stage2_qlora": {
+    "base_model": "Qwen/Qwen3.5-9B",
+    "continued_from": "stage1_report_only_adapter",
+    "epochs": 2,
+    "learning_rate": 5e-05,
+    "batch_size": 1,
+    "gradient_accumulation": 16,
+    "max_length": 2048,
+    "quantization": "4-bit NF4",
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "training_seed": 42
+  },
+  "evaluation": {
+    "do_sample": false,
+    "max_new_tokens": 1024,
+    "generation_batch_size": 4
+  },
+  "sft_manifest": {
+    "source_predictions": "artifacts/ctclip_stage2/ctclip_predictions_500.jsonl",
+    "successful_predictions": 500,
+    "train_examples": 450,
+    "valid_examples": 50,
+    "labels": [
+      "arterial_wall_calcification",
+      "atelectasis",
+      "coronary_artery_wall_calcification",
+      "emphysema",
+      "lung_opacity",
+      "lymphadenopathy",
+      "pulmonary_fibrotic_sequela",
+      "pulmonary_nodule"
+    ],
+    "train_patients": 448,
+    "valid_patients": 50,
+    "patient_overlap": [],
+    "weak_supervision_notice": "CT-RATE report-derived labels; not CT image gold-standard annotations.",
+    "dataset_sha256": "31fcdd69c9ab65cf610bf9ebcfbf8c00354f530279daa4d903472c963162cbdc"
+  }
+}

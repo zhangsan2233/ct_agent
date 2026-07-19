@@ -28,6 +28,8 @@ the project can run before the real dataset and remote model service are configu
 
 ## Model Download Policy
 
+For exact training-flow reconstruction after authorized CT-RATE access, see [reproducibility/REBUILD.md](reproducibility/REBUILD.md). The public reproducibility package includes only the 500-case ID/path/weak-label manifest, the 450/50 split, seeds, parameters, and SHA256 values; it contains no CT images, report text, or CT-CLIP prediction payloads.
+
 完整的模型、adapter、CT-RATE 数据下载来源、落盘路径、受限资产说明和离线验证方法见
 [`docs/ASSET_SETUP.md`](docs/ASSET_SETUP.md)。仓库中实际包含和明确排除的资产清单见
 [`docs/REPOSITORY_CONTENTS.md`](docs/REPOSITORY_CONTENTS.md)。

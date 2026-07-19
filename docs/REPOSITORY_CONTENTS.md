@@ -35,6 +35,10 @@ git lfs pull
 
 详细下载命令、访问申请、路径验证和离线运行规则见 [ASSET_SETUP.md](ASSET_SETUP.md)。
 
+## Safe training reproducibility metadata
+
+`reproducibility/` is committed with a 500-case ID/path/weak-label manifest, the 450/50 patient-disjoint split, random seeds, training configuration, and SHA256 checksums. It deliberately excludes CT images, report text, CT-CLIP prediction JSONL, and SFT JSONL. After authorized CT-RATE access, follow [`../reproducibility/REBUILD.md`](../reproducibility/REBUILD.md) to create those controlled local artifacts.
+
 ## 最小运行条件
 
 要运行最终的 CT-CLIP + Stage-2 Demo，需要：
