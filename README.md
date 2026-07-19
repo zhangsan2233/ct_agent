@@ -42,6 +42,27 @@ Local downloads that are reasonable:
 - `Qwen/Qwen3-Embedding-0.6B` and `Qwen/Qwen3-Reranker-0.6B`.
 - A quantized Qwen3.5 4B/9B model for offline debugging.
 
+### Local Stage-2 QLoRA backend
+
+The final project-trained adapter can drive the Agent without an OpenAI-compatible
+endpoint. Install the optional local inference dependencies, put the already downloaded
+Qwen3.5-9B base model and the repository Stage-2 adapter at the configured paths, then set:
+
+```text
+MODEL_BACKEND=local-qlora
+LOCAL_LLM_MODEL_DIR=./models/qwen3_5_9B/Qwen3.5-9B
+LOCAL_LLM_ADAPTER_DIR=./artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter
+LOCAL_LLM_DEVICE=auto
+LOCAL_LLM_LOAD_IN_4BIT=true
+```
+
+Install the local QLoRA dependencies with `pip install -r requirements-llm-train.txt` in the
+GPU environment.
+
+The model is loaded lazily on its first Agent request, uses local files only, and never
+downloads weights at runtime. If the base model or adapter is absent, the Agent reports an
+explicit local-asset fallback rather than silently calling a remote model.
+
 ## Data Download Policy
 
 CT-RATE is gated and large. Start with:

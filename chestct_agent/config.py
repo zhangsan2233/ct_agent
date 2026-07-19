@@ -25,6 +25,12 @@ class Settings(BaseModel):
     model_backend: str = "openai-compatible"
     openai_compatible_base_url: str = "http://localhost:8000/v1"
     openai_compatible_api_key: str = "replace-me"
+    local_llm_model_dir: Path = Path("./models/qwen3_5_9B/Qwen3.5-9B")
+    local_llm_adapter_dir: Path = Path(
+        "./artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter"
+    )
+    local_llm_device: str = "auto"
+    local_llm_load_in_4bit: bool = True
     request_timeout_seconds: float = 45.0
     llm_json_max_tokens: int = Field(default=1024, ge=128, le=8192)
     llm_text_max_tokens: int = Field(default=512, ge=64, le=4096)
@@ -134,6 +140,16 @@ def get_settings() -> Settings:
         ),
         openai_compatible_api_key=_setting_value(
             "openai_compatible_api_key", defaults.openai_compatible_api_key
+        ),
+        local_llm_model_dir=_setting_value(
+            "local_llm_model_dir", defaults.local_llm_model_dir
+        ),
+        local_llm_adapter_dir=_setting_value(
+            "local_llm_adapter_dir", defaults.local_llm_adapter_dir
+        ),
+        local_llm_device=_setting_value("local_llm_device", defaults.local_llm_device),
+        local_llm_load_in_4bit=_setting_value(
+            "local_llm_load_in_4bit", defaults.local_llm_load_in_4bit
         ),
         request_timeout_seconds=_setting_value(
             "request_timeout_seconds", defaults.request_timeout_seconds
