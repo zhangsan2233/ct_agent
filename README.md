@@ -63,6 +63,16 @@ The model is loaded lazily on its first Agent request, uses local files only, an
 downloads weights at runtime. If the base model or adapter is absent, the Agent reports an
 explicit local-asset fallback rather than silently calling a remote model.
 
+To export a standalone BF16 SafeTensors model for deployment or archival, merge the final
+adapter on a multi-GPU machine (the output is large and intentionally ignored by Git):
+
+```bash
+python scripts/merge_stage2_adapter.py \
+  --model-dir models/qwen3_5_9B/Qwen3.5-9B \
+  --adapter-dir artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter \
+  --out-dir artifacts/merged_models/qwen3_5_9b_stage2_merged
+```
+
 ## Data Download Policy
 
 CT-RATE is gated and large. Start with:
