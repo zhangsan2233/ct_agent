@@ -14,7 +14,16 @@ SOURCE_TREE_URL = (
 )
 SOURCE_RAW_ROOT = "https://raw.githubusercontent.com/ibrahimethemhamamci/CT-CLIP/main"
 REPO_ID = "ibrahimhamamci/CT-RATE"
-CHECKPOINT_FILE = "models/CT-CLIP-Related/CT-CLIP_v2.pt"
+CHECKPOINTS = {
+    "lipro": (
+        "models/CT-CLIP-Related/CT_LiPro_v2.pt",
+        Path("models/ctclip/CT_LiPro_v2.pt"),
+    ),
+    "zeroshot": (
+        "models/CT-CLIP-Related/CT-CLIP_v2.pt",
+        Path("models/ctclip/CT-CLIP_v2.pt"),
+    ),
+}
 
 
 def read_env_token() -> str | None:
@@ -51,7 +60,7 @@ def download_source(destination: Path) -> None:
     print(f"Source ready: {destination}")
 
 
-def download_checkpoint(destination: Path) -> None:
+def download_checkpoint(source_file: str, destination: Path) -> None:
     token = read_env_token()
     if not token:
         raise RuntimeError("HF_TOKEN is missing. Put it in .env before downloading gated weights.")
@@ -62,7 +71,7 @@ def download_checkpoint(destination: Path) -> None:
             hf_hub_download(
                 repo_id=REPO_ID,
                 repo_type="dataset",
-                filename=CHECKPOINT_FILE,
+                filename=source_file,
                 token=token,
                 local_dir=staging_dir,
             )
@@ -82,13 +91,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-only", action="store_true")
     parser.add_argument("--weights-only", action="store_true")
+    parser.add_argument("--variant", choices=tuple(CHECKPOINTS), default="zeroshot")
     args = parser.parse_args()
     source_dir = Path("external/CT-CLIP-main")
-    checkpoint = Path("models/ctclip/CT-CLIP_v2.pt")
+    checkpoint_file, checkpoint = CHECKPOINTS[args.variant]
     if not args.weights_only and not source_dir.exists():
         download_source(source_dir)
     if not args.source_only and not checkpoint.exists():
-        download_checkpoint(checkpoint)
+        download_checkpoint(checkpoint_file, checkpoint)
 
 
 if __name__ == "__main__":

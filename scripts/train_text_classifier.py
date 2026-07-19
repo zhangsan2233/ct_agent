@@ -3,6 +3,7 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
+from sklearn import __version__ as sklearn_version
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
@@ -26,13 +27,28 @@ def main() -> None:
     pipeline = Pipeline(
         [
             ("tfidf", TfidfVectorizer(max_features=50000, ngram_range=(1, 2), min_df=2)),
-            ("clf", OneVsRestClassifier(LogisticRegression(max_iter=1000))),
+            (
+                "clf",
+                OneVsRestClassifier(
+                    LogisticRegression(max_iter=1500, class_weight="balanced")
+                ),
+            ),
         ]
     )
     pipeline.fit(df["report_text"].fillna(""), y)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump({"model": pipeline, "labels": labels}, out)
+    joblib.dump(
+        {
+            "model": pipeline,
+            "labels": labels,
+            "label_count": len(labels),
+            "version": "ct-rate-report-tfidf-lr-v2-18-label",
+            "sklearn_version": sklearn_version,
+            "class_weight": "balanced",
+        },
+        out,
+    )
     print(f"Wrote {out}")
 
 

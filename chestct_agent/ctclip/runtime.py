@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 from pathlib import Path
 import sys
 import types
@@ -45,11 +44,13 @@ class CtClipRuntime:
         source_dir: Path,
         device: str = "auto",
         use_fp16: bool = True,
+        variant: str = "lipro",
     ):
         self.checkpoint = Path(checkpoint)
         self.source_dir = Path(source_dir)
         self.requested_device = device
         self.use_fp16 = use_fp16
+        self.variant = variant.lower()
         self.model = None
         self.tokenizer = None
         self.device = None
@@ -64,6 +65,8 @@ class CtClipRuntime:
         return None
 
     def asset_error(self) -> str | None:
+        if self.variant not in {"lipro", "zeroshot"}:
+            return f"Unsupported CT-CLIP variant: {self.variant}"
         if not self.checkpoint.exists():
             return f"CT-CLIP checkpoint not found: {self.checkpoint}"
         required = [
@@ -110,16 +113,10 @@ class CtClipRuntime:
             raise CtClipUnavailable("CT-CLIP requested CUDA, but PyTorch cannot access the GPU.")
         self.device = torch.device(device_name)
 
-        text_model_dir = os.environ.get(
-            "CTCLIP_TEXT_MODEL_DIR", "microsoft/BiomedVLP-CXR-BERT-specialized"
-        )
-        local_files_only = bool(os.environ.get("CTCLIP_TEXT_MODEL_DIR"))
         self.tokenizer = BertTokenizer.from_pretrained(
-            text_model_dir, do_lower_case=True, local_files_only=local_files_only
+            "microsoft/BiomedVLP-CXR-BERT-specialized", do_lower_case=True
         )
-        text_encoder = BertModel.from_pretrained(
-            text_model_dir, local_files_only=local_files_only
-        )
+        text_encoder = BertModel.from_pretrained("microsoft/BiomedVLP-CXR-BERT-specialized")
         text_encoder.resize_token_embeddings(len(self.tokenizer))
         image_encoder = CTViT(
             dim=512,
@@ -132,7 +129,7 @@ class CtClipRuntime:
             dim_head=32,
             heads=8,
         )
-        model = CTCLIP(
+        clip_model = CTCLIP(
             image_encoder=image_encoder,
             text_encoder=text_encoder,
             dim_image=294912,
@@ -149,8 +146,32 @@ class CtClipRuntime:
             state_dict = torch.load(self.checkpoint, map_location="cpu")
         if isinstance(state_dict, dict) and "state_dict" in state_dict:
             state_dict = state_dict["state_dict"]
-        # Newer Transformers versions no longer persist this deterministic buffer.
-        state_dict.pop("text_transformer.embeddings.position_ids", None)
+
+        if self.variant == "lipro":
+            class ImageLatentsClassifier(torch.nn.Module):
+                def __init__(self, trained_model):
+                    super().__init__()
+                    self.trained_model = trained_model
+                    self.dropout = torch.nn.Dropout(0.3)
+                    self.relu = torch.nn.ReLU()
+                    self.classifier = torch.nn.Linear(512, len(PATHOLOGIES))
+
+                def forward(self, text, image, device):
+                    _, image_latents, _ = self.trained_model(
+                        text,
+                        image,
+                        device=device,
+                        return_latents=True,
+                    )
+                    return self.classifier(self.dropout(self.relu(image_latents)))
+
+            model = ImageLatentsClassifier(clip_model)
+            state_dict.pop(
+                "trained_model.text_transformer.embeddings.position_ids", None
+            )
+        else:
+            model = clip_model
+            state_dict.pop("text_transformer.embeddings.position_ids", None)
         model.load_state_dict(state_dict)
         model.eval().to(self.device)
         self.model = model
@@ -197,16 +218,27 @@ class CtClipRuntime:
         self._load()
         import torch
 
-        prompts: list[str] = []
-        for pathology in PATHOLOGIES:
-            prompts.extend([f"{pathology} is present.", f"{pathology} is not present."])
-        text_tokens = self.tokenizer(
-            prompts,
-            return_tensors="pt",
-            padding="max_length",
-            truncation=True,
-            max_length=64,
-        ).to(self.device)
+        if self.variant == "lipro":
+            text_tokens = self.tokenizer(
+                "",
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=200,
+            ).to(self.device)
+        else:
+            prompts: list[str] = []
+            for pathology in PATHOLOGIES:
+                prompts.extend(
+                    [f"{pathology} is present.", f"{pathology} is not present."]
+                )
+            text_tokens = self.tokenizer(
+                prompts,
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=64,
+            ).to(self.device)
         volume = self._preprocess(volume_path).to(self.device)
 
         with torch.inference_mode(), torch.autocast(
@@ -215,7 +247,10 @@ class CtClipRuntime:
             enabled=self.use_fp16 and self.device.type == "cuda",
         ):
             logits = self.model(text_tokens, volume, device=self.device)
-            probabilities = logits.reshape(len(PATHOLOGIES), 2).softmax(dim=1)[:, 0]
+            if self.variant == "lipro":
+                probabilities = logits.sigmoid().reshape(-1)
+            else:
+                probabilities = logits.reshape(len(PATHOLOGIES), 2).softmax(dim=1)[:, 0]
         return {
             internal_name: float(probability)
             for internal_name, probability in zip(

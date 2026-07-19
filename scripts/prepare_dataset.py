@@ -1,7 +1,15 @@
 import argparse
 from pathlib import Path
+import sys
 
 import pandas as pd
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from chestct_agent.labels import LABEL_SPECS, SOURCE_COLUMN_TO_ID
 
 
 ID_CANDIDATES = ["case_id", "volume_name", "VolumeName", "study_id", "StudyInstanceUID", "id"]
@@ -17,33 +25,19 @@ REPORT_CANDIDATES = [
     "Impressions_EN",
 ]
 
-LABEL_NAME_MAP = {
-    "Atelectasis": "atelectasis",
-    "Cardiomegaly": "cardiomegaly",
-    "Consolidation": "consolidation",
-    "Lung nodule": "pulmonary_nodule",
-    "Pleural effusion": "pleural_effusion",
-    "Lymphadenopathy": "lymphadenopathy",
-    "Pericardial effusion": "pericardial_effusion",
-    "Bronchiectasis": "bronchiectasis",
-    "Emphysema": "emphysema",
-    "Lung opacity": "lung_opacity",
-    "Peribronchial thickening": "peribronchial_thickening",
-    "Arterial wall calcification": "arterial_wall_calcification",
-    "Coronary artery wall calcification": "coronary_artery_wall_calcification",
-    "Pulmonary fibrotic sequela": "pulmonary_fibrotic_sequela",
-    "Interlobular septal thickening": "interlobular_septal_thickening",
-    "Mosaic attenuation pattern": "mosaic_attenuation_pattern",
-    "Hiatal hernia": "hiatal_hernia",
-    "Medical material": "medical_material",
-}
+LABEL_NAME_MAP = SOURCE_COLUMN_TO_ID
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare CT-RATE reports/labels into a compact case index.")
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--out-dir", default="artifacts/prepared")
-    parser.add_argument("--top-labels", type=int, default=8)
+    parser.add_argument(
+        "--top-labels",
+        type=int,
+        default=0,
+        help="Keep the N most frequent labels. Zero keeps the canonical 18 labels.",
+    )
     return parser.parse_args()
 
 
@@ -113,9 +107,22 @@ def main() -> None:
         for column in labels.columns
         if column != label_id and pd.api.types.is_numeric_dtype(labels[column])
     ]
-    top_label_columns = (
-        labels[numeric_label_columns].sum().sort_values(ascending=False).head(args.top_labels).index.tolist()
-    )
+    canonical_columns = [
+        spec.source_column for spec in LABEL_SPECS if spec.source_column in numeric_label_columns
+    ]
+    if len(canonical_columns) != len(LABEL_SPECS):
+        missing = sorted(set(SOURCE_COLUMN_TO_ID) - set(canonical_columns))
+        raise ValueError(f"CT-RATE label file is missing canonical columns: {missing}")
+    if args.top_labels > 0:
+        top_label_columns = (
+            labels[canonical_columns]
+            .sum()
+            .sort_values(ascending=False)
+            .head(args.top_labels)
+            .index.tolist()
+        )
+    else:
+        top_label_columns = canonical_columns
 
     label_rows = labels[[label_id] + top_label_columns].copy()
     label_rows["labels"] = label_rows[top_label_columns].apply(

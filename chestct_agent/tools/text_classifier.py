@@ -1,89 +1,96 @@
-import re
 from pathlib import Path
 
 import joblib
 
+from chestct_agent.calibration import CalibrationStore
 from chestct_agent.config import Settings
-from chestct_agent.knowledge import LABEL_KNOWLEDGE, NEGATION_TERMS, UNCERTAIN_TERMS
-from chestct_agent.schemas import LabelPrediction, ParsedReport
+from chestct_agent.labels import LABEL_BY_ID, LABEL_IDS
+from chestct_agent.schemas import LabelPrediction, ParsedReport, ReportEvidence
+from chestct_agent.tools.evidence_extractor import extract_evidence
 
 
-def _contains_negation(window: str) -> bool:
-    lower = window.lower()
-    return any(term in lower for term in NEGATION_TERMS)
+def _status_from_probability(
+    probability: float,
+    positive_threshold: float,
+    uncertain_threshold: float,
+) -> str:
+    if probability >= positive_threshold:
+        return "positive"
+    if probability >= uncertain_threshold:
+        return "uncertain"
+    return "negative"
 
 
-def _contains_uncertainty(window: str) -> bool:
-    lower = window.lower()
-    return any(term in lower for term in UNCERTAIN_TERMS)
-
-
-def _sentences(text: str) -> list[str]:
-    return [piece.strip() for piece in re.split(r"(?<=[.!?])\s+|\n+", text) if piece.strip()]
+def _apply_direct_evidence(
+    probability: float,
+    items: list[ReportEvidence],
+    positive_threshold: float,
+    uncertain_threshold: float,
+) -> tuple[str, float]:
+    polarities = {item.polarity for item in items}
+    if "positive" in polarities and "negative" in polarities:
+        return "uncertain", 0.5
+    if "positive" in polarities:
+        return "positive", max(probability, 0.9)
+    if "uncertain" in polarities:
+        return "uncertain", max(min(probability, 0.79), 0.55)
+    if "negative" in polarities:
+        return "negative", min(probability, 0.05)
+    if "historical" in polarities:
+        return "uncertain", max(min(probability, 0.49), uncertain_threshold)
+    return _status_from_probability(
+        probability, positive_threshold, uncertain_threshold
+    ), probability
 
 
 class TextClassifierTool:
-    """Report multi-label classifier with optional sklearn model and keyword fallback."""
+    """Eighteen-label report classifier with explicit evidence overrides."""
 
     def __init__(self, settings: Settings):
         self.settings = settings
         self.model_path = Path(settings.artifact_dir) / "text_classifier.joblib"
         self.model = None
-        self.labels = None
+        self.labels: list[str] = []
+        self.calibration = CalibrationStore(settings)
         if self.model_path.exists():
             try:
                 artifact = joblib.load(self.model_path)
                 if isinstance(artifact, dict) and "model" in artifact:
                     self.model = artifact["model"]
-                    self.labels = artifact.get("labels")
+                    self.labels = [str(label) for label in artifact.get("labels", [])]
                 else:
                     self.model = artifact
+                    self.labels = [str(label) for label in getattr(self.model, "classes_", [])]
             except Exception:
                 self.model = None
 
     def predict(self, parsed_report: ParsedReport) -> list[LabelPrediction]:
+        text = parsed_report.full_report
+        scores = {label: 0.05 for label in LABEL_IDS}
         if self.model is not None:
-            return self._predict_model(parsed_report.full_report)
-        return self._predict_keyword(parsed_report.full_report)
+            probabilities = self.model.predict_proba([text])[0]
+            for label, probability in zip(self.labels, probabilities, strict=False):
+                if label in LABEL_BY_ID:
+                    scores[label] = float(probability)
 
-    def _predict_model(self, text: str) -> list[LabelPrediction]:
-        probabilities = self.model.predict_proba([text])
-        labels = self.labels or getattr(self.model, "classes_", list(LABEL_KNOWLEDGE.keys()))
+        evidence = extract_evidence(text, LABEL_IDS)
         predictions: list[LabelPrediction] = []
-        for label, probability in zip(labels, probabilities[0], strict=False):
-            status = "positive" if probability >= self.settings.min_label_confidence else "negative"
+        for label in LABEL_IDS:
+            calibrated = self.calibration.calibrate("report", label, scores[label])
+            status, probability = _apply_direct_evidence(
+                calibrated.probability,
+                evidence[label],
+                calibrated.positive_threshold,
+                calibrated.uncertain_threshold,
+            )
             predictions.append(
                 LabelPrediction(
-                    name=str(label),
+                    name=label,
                     status=status,
-                    confidence=float(probability),
+                    confidence=round(float(probability), 6),
                     source="report",
+                    calibrated=calibrated.calibrated,
+                    calibration_version=calibrated.version,
                 )
-            )
-        return predictions
-
-    def _predict_keyword(self, text: str) -> list[LabelPrediction]:
-        lower_text = text.lower()
-        sentences = _sentences(lower_text)
-        predictions: list[LabelPrediction] = []
-        for label, entry in LABEL_KNOWLEDGE.items():
-            confidence = 0.05
-            status = "negative"
-            for term in entry["terms"]:
-                pattern = rf"\b{re.escape(term.lower())}\b"
-                for sentence in sentences:
-                    if not re.search(pattern, sentence):
-                        continue
-                    if _contains_negation(sentence):
-                        confidence = max(confidence, 0.15)
-                        status = "negative"
-                    elif _contains_uncertainty(sentence):
-                        confidence = max(confidence, 0.55)
-                        status = "uncertain"
-                    else:
-                        confidence = max(confidence, 0.82)
-                        status = "positive"
-            predictions.append(
-                LabelPrediction(name=label, status=status, confidence=confidence, source="report")
             )
         return predictions
