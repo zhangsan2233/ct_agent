@@ -3,24 +3,59 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 
+# Local model weights and third-party CT-CLIP checkout.
 models/
-external/*.zip
-external/*.part
-static/cases/
-artifacts/
-data/uploads/
-
-# Large, gated, generated, or machine-local assets.
-data/.cache/
-data/dataset/
-data/radgenome/
 external/
-logs/
-*.log
-*.pt
-*.pth
+
+# CT-RATE, RadGenome, uploads, and temporary dependency caches stay local.
+# The small, source-attributed medical knowledge corpus is intentionally tracked.
+data/*
+!data/knowledge/
+!data/knowledge/**
+dataset/
+.deps/
+.remote_assets/
+
+# Generated artifacts remain local by default. These project-trained inference
+# assets are intentionally versioned by the upstream repository for reproducibility.
+artifacts/*
+!artifacts/text_classifier.joblib
+!artifacts/llm_qlora/
+artifacts/llm_qlora/*
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/adapter_model.safetensors
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/adapter_config.json
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/training_args.bin
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/adapter_model.safetensors
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/adapter_config.json
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/training_args.bin
+
 *.nii
 *.nii.gz
+*.pt
+*.pth
+*.safetensors
+*.bin
 *.zip
 *.tar.gz
+
+# Re-include the small upstream assets after the generic binary patterns.
+!artifacts/text_classifier.joblib
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/adapter_model.safetensors
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/adapter_config.json
+!artifacts/llm_qlora/qwen3_5_9b_evidence_json_1ep_single/adapter/training_args.bin
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/adapter_model.safetensors
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/adapter_config.json
+!artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter/training_args.bin
+
+# Credentials and local service/runtime traces.
+logs/
+*.log
+*.err.log
+*.out.log
+static/cases/
