@@ -1,0 +1,15 @@
+[server]
+maxUploadSize = 4096
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "dark"
+primaryColor = "#0A84FF"
+backgroundColor = "#050507"
+secondaryBackgroundColor = "#111114"
+textColor = "#F5F5F7"
+font = "sans serif"
+baseRadius = "small"
+buttonRadius = "small"
