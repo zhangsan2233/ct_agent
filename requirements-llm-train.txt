@@ -1,0 +1,8 @@
+# Qwen3.5 requires the latest Transformers implementation (per its official model card).
+git+https://github.com/huggingface/transformers.git@main
+datasets>=3.0
+peft>=0.14
+accelerate>=1.7
+bitsandbytes>=0.46
+sentencepiece>=0.2
+torchvision>=0.20
