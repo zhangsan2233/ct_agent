@@ -21,6 +21,16 @@ python scripts/run_feedback_calibration.py \
 
 该脚本仅统计审核通过的反馈、标签变更数量和是否达到服务器候选校准门槛；不会改变活动阈值、adapter 或完整模型。
 
+## 构建候选 QLoRA 数据
+
+```bash
+python scripts/build_feedback_sft.py \
+  --db artifacts/memory/agent_memory.sqlite3 \
+  --out-dir artifacts/feedback/sft_candidate_YYYYMMDD
+```
+
+只会读取 `approved` 反馈，并从受控病例上下文恢复报告和完整 CT-CLIP 分数；缺少报告或 8 个 CT 分数的病例会被跳过。输出目录包含 `train.jsonl`、`valid.jsonl` 和不含报告正文的 `manifest.json`，必须保持在 Git 忽略目录中。
+
 ## 服务器阶段
 
 当审核通过反馈达到门槛后，在受控服务器执行：候选阈值校准、固定回归集评估、人工批准发布。只有反馈覆盖、JSON 有效率和回归指标均满足门槛时，才可生成候选 QLoRA adapter；禁止自动发布或覆盖当前模型版本。
