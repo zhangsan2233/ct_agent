@@ -28,6 +28,8 @@ python scripts/initialize_feedback_store.py \
   --db artifacts/memory/agent_memory.sqlite3
 ```
 
+服务器可每日调用 `scripts/run_feedback_maintenance.sh`。它仅刷新候选报告；即使达到门槛，也仍需固定回归集评估与人工批准，才可应用任何阈值或启动候选 QLoRA 训练。
+
 ## 构建候选 QLoRA 数据
 
 ```bash
