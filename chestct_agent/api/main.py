@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from chestct_agent.agent.graph import ChestCtAgent
 from chestct_agent.config import get_settings
+from chestct_agent.feedback import FeedbackReview, FeedbackSubmission
 from chestct_agent.input_ingestion import (
     InputIngestionError,
     decode_report_bytes,
@@ -46,6 +47,29 @@ class ApprovalRequest(BaseModel):
     status: str
     reviewer: str
     note: str = ""
+
+
+@app.post("/api/cases/{case_id}/feedback")
+def submit_feedback(case_id: str, submission: FeedbackSubmission) -> dict[str, object]:
+    try:
+        return {"case_id": case_id, "events": agent.memory.submit_feedback(case_id, submission)}
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/feedback")
+def list_feedback(status: str | None = None, limit: int = 100) -> dict[str, object]:
+    return {"events": agent.memory.list_feedback(status=status, limit=limit)}
+
+
+@app.post("/api/feedback/{event_id}/review")
+def review_feedback(event_id: str, review: FeedbackReview) -> dict[str, str]:
+    try:
+        return agent.memory.review_feedback(event_id, review.status, review.reviewer, review.note)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/health")

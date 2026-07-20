@@ -2,8 +2,10 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
+import uuid
 
 from chestct_agent.config import Settings
+from chestct_agent.feedback import FeedbackSubmission
 from chestct_agent.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -41,6 +43,34 @@ class AgentMemory:
                     warning_count INTEGER NOT NULL,
                     approval_status TEXT NOT NULL
                 )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS feedback_events (
+                    id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    case_id TEXT NOT NULL,
+                    reviewer TEXT NOT NULL,
+                    reviewer_role TEXT NOT NULL,
+                    model_version TEXT NOT NULL,
+                    label TEXT NOT NULL,
+                    before_status TEXT NOT NULL,
+                    corrected_status TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    reviewed_by TEXT,
+                    reviewed_at TEXT,
+                    review_note TEXT NOT NULL DEFAULT '',
+                    response_snapshot_json TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_feedback_status_created
+                ON feedback_events(status, created_at)
                 """
             )
             connection.execute(
@@ -224,6 +254,62 @@ class AgentMemory:
                 (session_id, case_id),
             ).fetchall()
         return [CorrectionEvent.model_validate_json(row[0]) for row in rows]
+
+    def submit_feedback(self, case_id: str, submission: FeedbackSubmission) -> list[dict[str, str]]:
+        context = self.get_case_context(submission.session_id, case_id)
+        if context is None:
+            raise LookupError(f"No stored case context for {case_id} in session {submission.session_id}.")
+        _, response = context
+        labels = {item.name: item.status for item in response.labels}
+        unknown = sorted({item.label for item in submission.items} - set(labels))
+        if unknown:
+            raise ValueError("Unknown feedback labels: " + ", ".join(unknown))
+        if len({item.label for item in submission.items}) != len(submission.items):
+            raise ValueError("Feedback labels must be unique.")
+        created_at = datetime.now(timezone.utc).isoformat()
+        records: list[dict[str, str]] = []
+        with self._connect() as connection:
+            for item in submission.items:
+                event_id = str(uuid.uuid4())
+                connection.execute(
+                    """
+                    INSERT INTO feedback_events(
+                        id, created_at, session_id, case_id, reviewer, reviewer_role,
+                        model_version, label, before_status, corrected_status, reason,
+                        status, response_snapshot_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                    """,
+                    (event_id, created_at, submission.session_id, case_id, submission.reviewer,
+                     submission.reviewer_role, submission.model_version, item.label,
+                     labels[item.label], item.corrected_status, item.reason,
+                     response.model_dump_json()),
+                )
+                records.append({"id": event_id, "status": "pending", "label": item.label})
+        return records
+
+    def list_feedback(self, status: str | None = None, limit: int = 100) -> list[dict[str, str]]:
+        query = "SELECT id, created_at, session_id, case_id, reviewer, reviewer_role, model_version, label, before_status, corrected_status, reason, status, reviewed_by, reviewed_at, review_note FROM feedback_events"
+        params: tuple[object, ...] = ()
+        if status:
+            query += " WHERE status=?"
+            params = (status,)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        with self._connect() as connection:
+            rows = connection.execute(query, (*params, max(1, min(limit, 500)))).fetchall()
+        keys = ["id", "created_at", "session_id", "case_id", "reviewer", "reviewer_role", "model_version", "label", "before_status", "corrected_status", "reason", "status", "reviewed_by", "reviewed_at", "review_note"]
+        return [dict(zip(keys, row, strict=True)) for row in rows]
+
+    def review_feedback(self, event_id: str, status: str, reviewer: str, note: str = "") -> dict[str, str]:
+        reviewed_at = datetime.now(timezone.utc).isoformat()
+        with self._connect() as connection:
+            updated = connection.execute(
+                """UPDATE feedback_events SET status=?, reviewed_by=?, reviewed_at=?, review_note=?
+                WHERE id=? AND status='pending'""",
+                (status, reviewer, reviewed_at, note, event_id),
+            ).rowcount
+        if not updated:
+            raise LookupError(f"Pending feedback event not found: {event_id}")
+        return {"id": event_id, "status": status, "reviewed_by": reviewer, "reviewed_at": reviewed_at}
 
     def append_message(
         self, session_id: str, case_id: str, role: str, content: str
