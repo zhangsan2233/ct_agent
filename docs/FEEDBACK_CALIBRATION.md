@@ -21,6 +21,13 @@ python scripts/run_feedback_calibration.py \
 
 该脚本仅统计审核通过的反馈、标签变更数量和是否达到服务器候选校准门槛；不会改变活动阈值、adapter 或完整模型。
 
+首次部署时，先初始化审计库：
+
+```bash
+python scripts/initialize_feedback_store.py \
+  --db artifacts/memory/agent_memory.sqlite3
+```
+
 ## 构建候选 QLoRA 数据
 
 ```bash
