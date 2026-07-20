@@ -30,6 +30,8 @@ python scripts/initialize_feedback_store.py \
 
 服务器可每日调用 `scripts/run_feedback_maintenance.sh`。它仅刷新候选报告；即使达到门槛，也仍需固定回归集评估与人工批准，才可应用任何阈值或启动候选 QLoRA 训练。
 
+若推理容器未运行 cron/systemd，可将 `scripts/run_feedback_maintenance_loop.sh` 作为后台进程启动；它每 24 小时调用同一安全脚本，并把标准输出重定向到 `logs/feedback_maintenance.log`。容器重启后应由部署脚本重新启动该循环。
+
 ## 构建候选 QLoRA 数据
 
 ```bash
