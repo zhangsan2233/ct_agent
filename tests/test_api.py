@@ -97,6 +97,45 @@ def test_human_correction_endpoint_updates_case_and_exposes_history(tmp_path, mo
     assert history.json()["events"][0]["reviewer"] == "doctor-api"
 
 
+def test_feedback_requires_review_before_it_is_approved(tmp_path, monkeypatch):
+    settings = agent.settings.model_copy(update={"memory_db_path": tmp_path / "memory.sqlite3"})
+    memory = AgentMemory(settings)
+    monkeypatch.setattr(agent, "memory", memory)
+    request = AnalyzeRequest(
+        case_id="feedback-case", session_id="feedback-session", report_text="No nodule."
+    )
+    response = AnalyzeResponse(
+        case_id="feedback-case",
+        labels=[LabelOutput(name="pulmonary_nodule", status="positive", confidence=0.8)],
+        disclaimer="research only",
+        execution=ExecutionMetadata(input_mode="report_only"),
+    )
+    memory.record(request, response, None)
+    client = TestClient(app)
+
+    submitted = client.post(
+        "/api/cases/feedback-case/feedback",
+        json={
+            "session_id": "feedback-session",
+            "reviewer": "user-a",
+            "reviewer_role": "clinician",
+            "model_version": "stage2-merged-v1",
+            "items": [{"label": "pulmonary_nodule", "corrected_status": "negative"}],
+        },
+    )
+    event_id = submitted.json()["events"][0]["id"]
+    pending = client.get("/api/feedback?status=pending")
+    approved = client.post(
+        f"/api/feedback/{event_id}/review",
+        json={"status": "approved", "reviewer": "admin-a", "note": "verified"},
+    )
+
+    assert submitted.status_code == 200
+    assert pending.json()["events"][0]["status"] == "pending"
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+
+
 def test_case_conversation_keeps_history_and_streams_steps(tmp_path, monkeypatch):
     settings = agent.settings.model_copy(
         update={
