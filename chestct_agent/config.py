@@ -35,6 +35,14 @@ class Settings(BaseModel):
     llm_json_max_tokens: int = Field(default=1024, ge=128, le=8192)
     llm_text_max_tokens: int = Field(default=512, ge=64, le=4096)
     llm_reasoning_effort: str = "auto"
+    qwen_vision_enabled: bool = True
+    qwen_vision_max_images: int = Field(default=7, ge=3, le=12)
+    qwen_vision_min_confidence: float = Field(default=0.85, ge=0.5, le=1.0)
+    qwen_grounding_enabled: bool = True
+    qwen_grounding_alpha: float = Field(default=0.68, ge=0.1, le=0.9)
+    slice_vlm_enabled: bool = True
+    slice_vlm_model: str = "google/gemma-4-31b-it"
+    slice_vlm_max_images: int = Field(default=4, ge=3, le=18)
 
     data_dir: Path = Path("./data")
     upload_dir: Path = Path("./data/uploads")
@@ -50,6 +58,9 @@ class Settings(BaseModel):
     ctclip_timeout_seconds: float = 600.0
     ct_cache_enabled: bool = True
     ct_max_positive_labels: int = Field(default=11, ge=1, le=18)
+    ct_attribution_enabled: bool = True
+    ct_attribution_slices_per_label: int = Field(default=3, ge=1, le=5)
+    ct_attribution_alpha: float = Field(default=0.65, ge=0.1, le=0.9)
     knowledge_dir: Path = Path("./data/knowledge")
     calibration_path: Path = Path("./artifacts/calibration/calibrators.joblib")
     radgraph_enabled: bool = True
@@ -60,6 +71,17 @@ class Settings(BaseModel):
     radgenome_mask_dir: Path = Path("./data/radgenome")
     radgenome_index_path: Path = Path("./artifacts/radgenome/mask_index.csv")
     radgenome_max_masks: int = Field(default=8, ge=1, le=200)
+    totalseg_enabled: bool = True
+    totalseg_executable: Path = Path("./tools/TotalSegmentator")
+    totalseg_device: str = "gpu"
+    totalseg_timeout_seconds: float = 900.0
+    totalseg_cache_dir: Path = Path("./artifacts/tool_cache/totalsegmentator")
+    pleural_effusion_positive_ml: float = Field(default=15.0, ge=0.0)
+    pleural_effusion_uncertain_ml: float = Field(default=3.0, ge=0.0)
+    pericardial_effusion_positive_ml: float = Field(default=20.0, ge=0.0)
+    pericardial_effusion_uncertain_ml: float = Field(default=3.0, ge=0.0)
+    anatomy_quantification_fusion_enabled: bool = False
+    cardiothoracic_ratio_positive: float = Field(default=0.5, ge=0.2, le=0.9)
     memory_db_path: Path = Path("./artifacts/memory/agent_memory.sqlite3")
     agent_dynamic_planning: bool = True
     tool_max_retries: int = Field(default=1, ge=0, le=3)
@@ -108,20 +130,12 @@ def get_settings() -> Settings:
         agent_model=_setting_value("agent_model", defaults.agent_model),
         embedding_model=_setting_value("embedding_model", defaults.embedding_model),
         embedding_backend=_setting_value("embedding_backend", defaults.embedding_backend),
-        embedding_model_path=_setting_value(
-            "embedding_model_path", defaults.embedding_model_path
-        ),
+        embedding_model_path=_setting_value("embedding_model_path", defaults.embedding_model_path),
         reranker_model=_setting_value("reranker_model", defaults.reranker_model),
-        reranker_model_path=_setting_value(
-            "reranker_model_path", defaults.reranker_model_path
-        ),
+        reranker_model_path=_setting_value("reranker_model_path", defaults.reranker_model_path),
         local_rag_device=_setting_value("local_rag_device", defaults.local_rag_device),
-        rag_dense_candidates=_setting_value(
-            "rag_dense_candidates", defaults.rag_dense_candidates
-        ),
-        rag_bm25_candidates=_setting_value(
-            "rag_bm25_candidates", defaults.rag_bm25_candidates
-        ),
+        rag_dense_candidates=_setting_value("rag_dense_candidates", defaults.rag_dense_candidates),
+        rag_bm25_candidates=_setting_value("rag_bm25_candidates", defaults.rag_bm25_candidates),
         rag_rerank_candidates=_setting_value(
             "rag_rerank_candidates", defaults.rag_rerank_candidates
         ),
@@ -154,14 +168,28 @@ def get_settings() -> Settings:
         request_timeout_seconds=_setting_value(
             "request_timeout_seconds", defaults.request_timeout_seconds
         ),
-        llm_json_max_tokens=_setting_value(
-            "llm_json_max_tokens", defaults.llm_json_max_tokens
+        llm_json_max_tokens=_setting_value("llm_json_max_tokens", defaults.llm_json_max_tokens),
+        llm_text_max_tokens=_setting_value("llm_text_max_tokens", defaults.llm_text_max_tokens),
+        llm_reasoning_effort=_setting_value("llm_reasoning_effort", defaults.llm_reasoning_effort),
+        qwen_vision_enabled=_setting_value(
+            "qwen_vision_enabled", defaults.qwen_vision_enabled
         ),
-        llm_text_max_tokens=_setting_value(
-            "llm_text_max_tokens", defaults.llm_text_max_tokens
+        qwen_vision_max_images=_setting_value(
+            "qwen_vision_max_images", defaults.qwen_vision_max_images
         ),
-        llm_reasoning_effort=_setting_value(
-            "llm_reasoning_effort", defaults.llm_reasoning_effort
+        qwen_vision_min_confidence=_setting_value(
+            "qwen_vision_min_confidence", defaults.qwen_vision_min_confidence
+        ),
+        qwen_grounding_enabled=_setting_value(
+            "qwen_grounding_enabled", defaults.qwen_grounding_enabled
+        ),
+        qwen_grounding_alpha=_setting_value(
+            "qwen_grounding_alpha", defaults.qwen_grounding_alpha
+        ),
+        slice_vlm_enabled=_setting_value("slice_vlm_enabled", defaults.slice_vlm_enabled),
+        slice_vlm_model=_setting_value("slice_vlm_model", defaults.slice_vlm_model),
+        slice_vlm_max_images=_setting_value(
+            "slice_vlm_max_images", defaults.slice_vlm_max_images
         ),
         data_dir=_setting_value("data_dir", defaults.data_dir),
         upload_dir=_setting_value("upload_dir", defaults.upload_dir),
@@ -181,12 +209,18 @@ def get_settings() -> Settings:
         ct_max_positive_labels=_setting_value(
             "ct_max_positive_labels", defaults.ct_max_positive_labels
         ),
+        ct_attribution_enabled=_setting_value(
+            "ct_attribution_enabled", defaults.ct_attribution_enabled
+        ),
+        ct_attribution_slices_per_label=_setting_value(
+            "ct_attribution_slices_per_label",
+            defaults.ct_attribution_slices_per_label,
+        ),
+        ct_attribution_alpha=_setting_value("ct_attribution_alpha", defaults.ct_attribution_alpha),
         knowledge_dir=_setting_value("knowledge_dir", defaults.knowledge_dir),
         calibration_path=_setting_value("calibration_path", defaults.calibration_path),
         radgraph_enabled=_setting_value("radgraph_enabled", defaults.radgraph_enabled),
-        radgraph_model_type=_setting_value(
-            "radgraph_model_type", defaults.radgraph_model_type
-        ),
+        radgraph_model_type=_setting_value("radgraph_model_type", defaults.radgraph_model_type),
         radgraph_model_cache_dir=_setting_value(
             "radgraph_model_cache_dir", defaults.radgraph_model_cache_dir
         ),
@@ -196,14 +230,38 @@ def get_settings() -> Settings:
         radgraph_timeout_seconds=_setting_value(
             "radgraph_timeout_seconds", defaults.radgraph_timeout_seconds
         ),
-        radgenome_mask_dir=_setting_value(
-            "radgenome_mask_dir", defaults.radgenome_mask_dir
+        radgenome_mask_dir=_setting_value("radgenome_mask_dir", defaults.radgenome_mask_dir),
+        radgenome_index_path=_setting_value("radgenome_index_path", defaults.radgenome_index_path),
+        radgenome_max_masks=_setting_value("radgenome_max_masks", defaults.radgenome_max_masks),
+        totalseg_enabled=_setting_value("totalseg_enabled", defaults.totalseg_enabled),
+        totalseg_executable=_setting_value(
+            "totalseg_executable", defaults.totalseg_executable
         ),
-        radgenome_index_path=_setting_value(
-            "radgenome_index_path", defaults.radgenome_index_path
+        totalseg_device=_setting_value("totalseg_device", defaults.totalseg_device),
+        totalseg_timeout_seconds=_setting_value(
+            "totalseg_timeout_seconds", defaults.totalseg_timeout_seconds
         ),
-        radgenome_max_masks=_setting_value(
-            "radgenome_max_masks", defaults.radgenome_max_masks
+        totalseg_cache_dir=_setting_value(
+            "totalseg_cache_dir", defaults.totalseg_cache_dir
+        ),
+        pleural_effusion_positive_ml=_setting_value(
+            "pleural_effusion_positive_ml", defaults.pleural_effusion_positive_ml
+        ),
+        pleural_effusion_uncertain_ml=_setting_value(
+            "pleural_effusion_uncertain_ml", defaults.pleural_effusion_uncertain_ml
+        ),
+        pericardial_effusion_positive_ml=_setting_value(
+            "pericardial_effusion_positive_ml", defaults.pericardial_effusion_positive_ml
+        ),
+        pericardial_effusion_uncertain_ml=_setting_value(
+            "pericardial_effusion_uncertain_ml", defaults.pericardial_effusion_uncertain_ml
+        ),
+        anatomy_quantification_fusion_enabled=_setting_value(
+            "anatomy_quantification_fusion_enabled",
+            defaults.anatomy_quantification_fusion_enabled,
+        ),
+        cardiothoracic_ratio_positive=_setting_value(
+            "cardiothoracic_ratio_positive", defaults.cardiothoracic_ratio_positive
         ),
         memory_db_path=_setting_value("memory_db_path", defaults.memory_db_path),
         agent_dynamic_planning=_setting_value(
@@ -212,9 +270,7 @@ def get_settings() -> Settings:
         tool_max_retries=_setting_value("tool_max_retries", defaults.tool_max_retries),
         top_k_similar=_setting_value("top_k_similar", defaults.top_k_similar),
         rag_max_attempts=_setting_value("rag_max_attempts", defaults.rag_max_attempts),
-        min_label_confidence=_setting_value(
-            "min_label_confidence", defaults.min_label_confidence
-        ),
+        min_label_confidence=_setting_value("min_label_confidence", defaults.min_label_confidence),
         positive_label_threshold=_setting_value(
             "positive_label_threshold", defaults.positive_label_threshold
         ),

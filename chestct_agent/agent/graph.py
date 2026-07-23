@@ -27,6 +27,7 @@ from chestct_agent.schemas import (
     CorrectionRequest,
     ExecutionEvent,
     ExecutionMetadata,
+    EvidenceFromImage,
     HumanApproval,
     LabelOutput,
     ModelReasoningReport,
@@ -34,9 +35,16 @@ from chestct_agent.schemas import (
     RagTrace,
     RetrievalAttemptTrace,
 )
-from chestct_agent.tools.consistency_checker import apply_credibility_gate, fuse_predictions
+from chestct_agent.tools.consistency_checker import (
+    apply_diagnostic_tool_evidence,
+    apply_credibility_gate,
+    apply_qwen_visual_review,
+    fuse_predictions,
+)
+from chestct_agent.tools.ct_attribution import CtAttributionTool
 from chestct_agent.tools.ct_classifier import CtClassifierTool
 from chestct_agent.tools.ct_preprocess import CtPreprocessTool
+from chestct_agent.tools.qwen_slice_vqa import QwenSliceVqaTool
 from chestct_agent.tools.evidence_extractor import extract_evidence
 from chestct_agent.tools.json_validator import validate_response
 from chestct_agent.tools.lesion_grounding import LESION_MASK_ALIASES, ground_findings
@@ -46,6 +54,7 @@ from chestct_agent.tools.report_parser import parse_report
 from chestct_agent.tools.report_graph import ReportGraphTool, report_graph_to_evidence
 from chestct_agent.tools.similar_cases import SimilarCaseRetrieverTool
 from chestct_agent.tools.text_classifier import TextClassifierTool
+from chestct_agent.tools.totalseg_diagnostics import TotalSegmentatorDiagnosticTool
 from chestct_agent.tools.registry import TOOL_REGISTRY
 from chestct_agent.tools.visual_evidence import build_visual_evidence
 
@@ -67,11 +76,16 @@ class ChestCtAgent:
         self.text_classifier = TextClassifierTool(self.settings)
         self.report_graph = ReportGraphTool(self.settings)
         self.ct_preprocess = CtPreprocessTool(self.settings)
+        self.qwen_slice_vqa = QwenSliceVqaTool(
+            self.settings, self.qwen, self.ct_preprocess
+        )
         self.ct_classifier = CtClassifierTool(self.settings)
+        self.ct_attribution = CtAttributionTool(self.settings)
         self.fusion_calibration = CalibrationStore(self.settings)
         self.medical_rag = MedicalRagTool(self.settings)
         self.similar_cases = SimilarCaseRetrieverTool(self.settings)
         self.organ_segmentation = OrganSegmentationTool(self.settings)
+        self.specialist_diagnostics = TotalSegmentatorDiagnosticTool(self.settings)
         self.conversation = CaseConversationAgent(
             self.qwen, self.memory, self.medical_rag
         )
@@ -91,6 +105,9 @@ class ChestCtAgent:
             "run_text_classifier": self.run_text_classifier,
             "run_report_graph": self.run_report_graph,
             "run_ct_classifier": self.run_ct_classifier,
+            "run_specialist_diagnostics": self.run_specialist_diagnostics,
+            "run_qwen_slice_vqa": self.run_qwen_slice_vqa,
+            "run_ct_attribution": self.run_ct_attribution,
             "run_organ_segmentation": self.run_organ_segmentation,
             "run_lesion_grounding": self.run_lesion_grounding,
             "plan_rag_queries": self.plan_rag_queries,
@@ -136,6 +153,45 @@ class ChestCtAgent:
         workflow.add_conditional_edges(
             "run_ct_classifier",
             self.route_after_ct,
+            {
+                "specialists": "run_specialist_diagnostics",
+                "vision": "run_qwen_slice_vqa",
+                "attribution": "run_ct_attribution",
+                "organ": "run_organ_segmentation",
+                "grounding": "run_lesion_grounding",
+                "rag": "plan_rag_queries",
+                "similar": "retrieve_similar_cases",
+                "evidence": "extract_evidence",
+            },
+        )
+        workflow.add_conditional_edges(
+            "run_specialist_diagnostics",
+            self.route_after_specialist_diagnostics,
+            {
+                "vision": "run_qwen_slice_vqa",
+                "attribution": "run_ct_attribution",
+                "organ": "run_organ_segmentation",
+                "grounding": "run_lesion_grounding",
+                "rag": "plan_rag_queries",
+                "similar": "retrieve_similar_cases",
+                "evidence": "extract_evidence",
+            },
+        )
+        workflow.add_conditional_edges(
+            "run_qwen_slice_vqa",
+            self.route_after_qwen_slice_vqa,
+            {
+                "attribution": "run_ct_attribution",
+                "organ": "run_organ_segmentation",
+                "grounding": "run_lesion_grounding",
+                "rag": "plan_rag_queries",
+                "similar": "retrieve_similar_cases",
+                "evidence": "extract_evidence",
+            },
+        )
+        workflow.add_conditional_edges(
+            "run_ct_attribution",
+            self.route_after_attribution,
             {
                 "organ": "run_organ_segmentation",
                 "grounding": "run_lesion_grounding",
@@ -455,6 +511,9 @@ class ChestCtAgent:
             "run_text_classifier": "正在执行18类报告异常分类",
             "run_report_graph": "正在抽取RadGraph-XL实体节点与临床关系",
             "run_ct_classifier": "正在预处理3D CT并运行CT-CLIP分类",
+            "run_specialist_diagnostics": "正在运行独立3D分割与定量影像工具",
+            "run_qwen_slice_vqa": "正在将肺窗与纵隔窗关键切片交给Qwen视觉复核",
+            "run_ct_attribution": "正在为全部18类CT标签生成CT-CLIP模型归因图",
             "run_organ_segmentation": "正在读取并对齐器官分割mask",
             "run_lesion_grounding": "正在定位异常切片和解剖区域",
             "plan_rag_queries": "正在生成医学知识检索问题",
@@ -494,6 +553,23 @@ class ChestCtAgent:
             "run_ct_classifier": (
                 f"18 类 CT 分类；阳性 {positive_ct} 类；"
                 f"缓存={'命中' if state.ct_cache_hit else '未命中'}"
+            ),
+            "run_specialist_diagnostics": (
+                f"获得 {len(state.diagnostic_evidence)} 条独立工具证据；"
+                f"耗时 {state.diagnostic_tool_latency_ms:.0f} ms"
+            ),
+            "run_qwen_slice_vqa": (
+                f"独立切片VLM复核 {len(state.qwen_visual_reviews)} 类；"
+                f"输入 {len(state.qwen_visual_images)} 张多窗切片；"
+                f"定位 {sum(len(item.regions) for item in state.qwen_visual_reviews)} 个区域；"
+                f"生成 {sum(len(item.grounding_heatmap_images) for item in state.qwen_visual_reviews)} 张热图；"
+                f"远程视觉={'成功' if state.qwen_vision_used else '降级'}"
+            ),
+            "run_ct_attribution": (
+                f"覆盖 {sum(item.model_attribution is not None for item in state.image_evidence_by_label.values())} 类标签；生成 "
+                f"{sum(len(item.model_attribution.overlay_images) for item in state.image_evidence_by_label.values() if item.model_attribution)} 张归因图；"
+                f"缓存={('命中' if state.ct_attribution_cache_hit else '未命中') if state.ct_attribution_cache_hit is not None else '不适用'}；"
+                f"耗时 {state.ct_attribution_latency_ms:.0f} ms"
             ),
             "run_organ_segmentation": f"获得 {len(state.anatomy_masks)} 个可用 mask",
             "run_lesion_grounding": f"生成 {len(state.region_findings)} 条区域级发现",
@@ -650,6 +726,78 @@ class ChestCtAgent:
                     f"质量门控={'触发' if state.ct_quality_degraded else '通过'}。",
                 ],
                 {**counts, "cache_hit": state.ct_cache_hit, "quality_degraded": state.ct_quality_degraded},
+            )
+
+        if node_name == "run_specialist_diagnostics":
+            verdicts = {
+                verdict: sum(item.verdict == verdict for item in state.diagnostic_evidence)
+                for verdict in ("positive", "negative", "uncertain", "unavailable")
+            }
+            tools = sorted({item.tool for item in state.diagnostic_evidence})
+            return (
+                "独立3D分割和HU定量先生成可审计证据，再由融合规则决定是否改判。",
+                [
+                    f"工具={', '.join(tools) or '无'}。",
+                    f"证据={len(state.diagnostic_evidence)}条；耗时={state.diagnostic_tool_latency_ms:.0f} ms。",
+                    "肺气肿定量尚未完成队列校准，当前只展示，不参与最终改判。",
+                ],
+                {**verdicts, "latency_ms": state.diagnostic_tool_latency_ms},
+            )
+
+        if node_name == "run_qwen_slice_vqa":
+            positive = sum(item.status == "positive" for item in state.qwen_visual_reviews)
+            negative = sum(item.status == "negative" for item in state.qwen_visual_reviews)
+            uncertain = sum(item.status == "uncertain" for item in state.qwen_visual_reviews)
+            region_count = sum(len(item.regions) for item in state.qwen_visual_reviews)
+            heatmap_count = sum(
+                len(item.grounding_heatmap_images) for item in state.qwen_visual_reviews
+            )
+            return (
+                "独立切片VLM仅依据实际传入的关键切片复核候选；高置信结果随后进入受控一致性规则。",
+                [
+                    f"模型={self.settings.slice_vlm_model}；API={'已调用' if state.qwen_vision_used else '未成功调用'}；图片={len(state.qwen_visual_images)}张。",
+                    f"视觉判断：阳性{positive}、阴性{negative}、不确定{uncertain}。",
+                    f"Qwen定位区域={region_count}；视觉定位热图={heatmap_count}张。",
+                    "定位热图来自Qwen生成的bbox，不是模型内部attention或病灶分割。",
+                    f"降级原因={state.qwen_vision_fallback_reason or '无'}。",
+                ],
+                {
+                    "used_remote": state.qwen_vision_used,
+                    "images": len(state.qwen_visual_images),
+                    "positive": positive,
+                    "negative": negative,
+                    "uncertain": uncertain,
+                    "grounding_regions": region_count,
+                    "grounding_heatmaps": heatmap_count,
+                    "latency_ms": state.qwen_vision_latency_ms,
+                },
+            )
+
+        if node_name == "run_ct_attribution":
+            attributed_labels = [
+                label
+                for label, evidence in state.image_evidence_by_label.items()
+                if evidence.model_attribution is not None
+            ]
+            image_count = sum(
+                len(evidence.model_attribution.overlay_images)
+                for evidence in state.image_evidence_by_label.values()
+                if evidence.model_attribution is not None
+            )
+            return (
+                "为全部CT标签解释阳性分数的空间贡献；归因图不参与分类或置信度计算。",
+                [
+                    "方法=Gradient x Token；目标=阳性提示分数减阴性提示分数或LiPro分类logit。",
+                    "已生成标签：" + ("、".join(attributed_labels) or "无"),
+                    "模型归因与RadGenome mask独立保存，不将归因图标记为病灶分割。",
+                ],
+                {
+                    "input_labels": len(state.ct_predictions),
+                    "attributed_labels": len(attributed_labels),
+                    "images": image_count,
+                    "cache_hit": state.ct_attribution_cache_hit,
+                    "latency_ms": state.ct_attribution_latency_ms,
+                },
             )
 
         if node_name == "run_organ_segmentation":
@@ -884,6 +1032,9 @@ class ChestCtAgent:
             "run_text_classifier": "text_classifier_tool",
             "run_report_graph": "report_graph_tool",
             "run_ct_classifier": "ct_classifier_tool",
+            "run_specialist_diagnostics": "specialist_imaging_tools",
+            "run_qwen_slice_vqa": "qwen_slice_vqa_tool",
+            "run_ct_attribution": "ct_attribution_tool",
             "run_organ_segmentation": "organ_segmentation_tool",
             "run_lesion_grounding": "lesion_grounding_tool",
             "plan_rag_queries": "agentic_rag_query_planner",
@@ -917,6 +1068,28 @@ class ChestCtAgent:
         state = AgentState.model_validate(data)
         if self._is_planned(state, "ct_classifier_tool"):
             data = await self._invoke_timed("run_ct_classifier", self.run_ct_classifier, data)
+        state = AgentState.model_validate(data)
+        if any(
+            self._is_planned(state, name)
+            for name in (
+                "nodule_segmentation_tool",
+                "effusion_segmentation_tool",
+                "cardiac_measurement_tool",
+            )
+        ):
+            data = await self._invoke_timed(
+                "run_specialist_diagnostics", self.run_specialist_diagnostics, data
+            )
+        state = AgentState.model_validate(data)
+        if self._is_planned(state, "qwen_slice_vqa_tool"):
+            data = await self._invoke_timed(
+                "run_qwen_slice_vqa", self.run_qwen_slice_vqa, data
+            )
+        state = AgentState.model_validate(data)
+        if self._is_planned(state, "ct_attribution_tool"):
+            data = await self._invoke_timed(
+                "run_ct_attribution", self.run_ct_attribution, data
+            )
         state = AgentState.model_validate(data)
         if self._is_planned(state, "organ_segmentation_tool"):
             data = await self._invoke_timed(
@@ -988,6 +1161,49 @@ class ChestCtAgent:
     @staticmethod
     def route_after_ct(data: dict) -> str:
         state = AgentState.model_validate(data)
+        if any(
+            ChestCtAgent._is_planned(state, name)
+            for name in (
+                "nodule_segmentation_tool",
+                "effusion_segmentation_tool",
+                "cardiac_measurement_tool",
+            )
+        ):
+            return "specialists"
+        return ChestCtAgent._route_after_specialist_diagnostics_state(state)
+
+    @staticmethod
+    def route_after_specialist_diagnostics(data: dict) -> str:
+        return ChestCtAgent._route_after_specialist_diagnostics_state(
+            AgentState.model_validate(data)
+        )
+
+    @staticmethod
+    def _route_after_specialist_diagnostics_state(state: AgentState) -> str:
+        if ChestCtAgent._is_planned(state, "qwen_slice_vqa_tool"):
+            return "vision"
+        return ChestCtAgent._route_after_qwen_slice_vqa_state(state)
+
+    @staticmethod
+    def route_after_qwen_slice_vqa(data: dict) -> str:
+        return ChestCtAgent._route_after_qwen_slice_vqa_state(
+            AgentState.model_validate(data)
+        )
+
+    @staticmethod
+    def _route_after_qwen_slice_vqa_state(state: AgentState) -> str:
+        if ChestCtAgent._is_planned(state, "ct_attribution_tool"):
+            return "attribution"
+        return ChestCtAgent._route_after_attribution_state(state)
+
+    @staticmethod
+    def route_after_attribution(data: dict) -> str:
+        return ChestCtAgent._route_after_attribution_state(
+            AgentState.model_validate(data)
+        )
+
+    @staticmethod
+    def _route_after_attribution_state(state: AgentState) -> str:
         if ChestCtAgent._is_planned(state, "organ_segmentation_tool"):
             return "organ"
         if ChestCtAgent._is_planned(state, "lesion_grounding_tool"):
@@ -1084,9 +1300,12 @@ class ChestCtAgent:
         )
         preview_images = state.request.ct_preview_images or rendered
         state.ct_preview_images = preview_images
-        state.ct_predictions, ct_warnings, state.ct_cache_hit = self.ct_classifier.predict(
-            state.request.ct_volume_path, preview_images
-        )
+        (
+            state.ct_predictions,
+            ct_warnings,
+            state.ct_cache_hit,
+            state.ct_attribution_artifact,
+        ) = self.ct_classifier.predict(state.request.ct_volume_path, preview_images)
         quality_warning = next(
             (warning for warning in ct_warnings if warning.startswith("CT质量门控触发")),
             None,
@@ -1098,6 +1317,121 @@ class ChestCtAgent:
         state.tool_trace.append("ct_preprocess_tool")
         state.tool_trace.append("ct_classifier_tool")
         state.tool_trace.append("visual_evidence_tool")
+        return state.model_dump(mode="python")
+
+    async def run_specialist_diagnostics(self, data: dict) -> dict:
+        state = AgentState.model_validate(data)
+        requested = {
+            label
+            for label, tool in {
+                "pulmonary_nodule": "nodule_segmentation_tool",
+                "pleural_effusion": "effusion_segmentation_tool",
+                "pericardial_effusion": "effusion_segmentation_tool",
+                "cardiomegaly": "cardiac_measurement_tool",
+            }.items()
+            if self._is_planned(state, tool)
+        }
+        (
+            state.diagnostic_evidence,
+            warnings,
+            state.diagnostic_tool_latency_ms,
+        ) = await asyncio.to_thread(
+            self.specialist_diagnostics.analyze,
+            state.request.case_id,
+            state.request.ct_volume_path,
+            requested,
+        )
+        state.consistency_warnings.extend(warnings)
+        for item in state.diagnostic_evidence:
+            image_evidence = state.image_evidence_by_label.get(
+                item.label, EvidenceFromImage()
+            )
+            image_evidence.preview_images = list(
+                dict.fromkeys(item.preview_images + image_evidence.preview_images)
+            )
+            image_evidence.mask_paths = list(
+                dict.fromkeys(item.mask_paths + image_evidence.mask_paths)
+            )
+            if item.slice_indices:
+                image_evidence.slice_range = [
+                    min(item.slice_indices),
+                    max(item.slice_indices),
+                ]
+            image_evidence.localized = bool(item.preview_images and item.mask_paths)
+            image_evidence.grounding_type = "lesion_mask"
+            image_evidence.note = item.rationale_zh
+            state.image_evidence_by_label[item.label] = image_evidence
+        for tool_name in sorted({item.tool for item in state.diagnostic_evidence}):
+            state.tool_trace.append(tool_name)
+        if not state.diagnostic_evidence:
+            state.tool_trace.append("specialist_imaging_tools")
+        return state.model_dump(mode="python")
+
+    async def run_qwen_slice_vqa(self, data: dict) -> dict:
+        state = AgentState.model_validate(data)
+        (
+            state.qwen_visual_reviews,
+            state.qwen_visual_images,
+            state.qwen_vision_used,
+            state.qwen_vision_fallback_reason,
+            state.qwen_vision_latency_ms,
+        ) = await self.qwen_slice_vqa.review(
+            state.request.case_id,
+            state.request.ct_volume_path,
+            state.ct_predictions,
+            state.diagnostic_evidence,
+        )
+        state.llm_calls += 1
+        if not state.qwen_vision_used:
+            state.llm_fallbacks += 1
+            if state.qwen_vision_fallback_reason:
+                state.llm_fallback_reasons.append(
+                    f"qwen_slice_vqa:{state.qwen_vision_fallback_reason}"
+                )
+                state.consistency_warnings.append(
+                    "Qwen视觉复核未成功，保留CT模型结果："
+                    f"{state.qwen_vision_fallback_reason}。"
+                )
+        state.tool_trace.append("qwen_slice_vqa_tool")
+        return state.model_dump(mode="python")
+
+    async def run_ct_attribution(self, data: dict) -> dict:
+        state = AgentState.model_validate(data)
+        evidence, warnings, render_cache_hit, render_latency_ms = (
+            self.ct_attribution.render(
+                state.request.case_id,
+                state.request.ct_volume_path,
+                state.ct_predictions,
+                state.ct_attribution_artifact,
+            )
+        )
+        for label, model_attribution in evidence.items():
+            image_evidence = state.image_evidence_by_label.get(label)
+            if image_evidence is None:
+                image_evidence = EvidenceFromImage()
+            image_evidence.model_attribution = model_attribution
+            state.image_evidence_by_label[label] = image_evidence
+        artifact_latency_ms = (
+            state.ct_attribution_artifact.latency_ms
+            if state.ct_attribution_artifact
+            else 0.0
+        )
+        state.ct_attribution_latency_ms = round(
+            artifact_latency_ms + render_latency_ms, 2
+        )
+        state.ct_peak_gpu_memory_mb = (
+            state.ct_attribution_artifact.peak_gpu_memory_mb
+            if state.ct_attribution_artifact
+            else None
+        )
+        if state.ct_attribution_artifact is not None:
+            state.ct_attribution_cache_hit = bool(
+                state.ct_cache_hit and render_cache_hit
+            )
+        else:
+            state.ct_attribution_cache_hit = None
+        state.consistency_warnings.extend(warnings)
+        state.tool_trace.append("ct_attribution_tool")
         return state.model_dump(mode="python")
 
     async def run_organ_segmentation(self, data: dict) -> dict:
@@ -1129,7 +1463,11 @@ class ChestCtAgent:
         state.region_findings, grounded_evidence = ground_findings(
             source_predictions, state.anatomy_masks
         )
-        state.image_evidence_by_label.update(grounded_evidence)
+        for label, grounded in grounded_evidence.items():
+            existing = state.image_evidence_by_label.get(label)
+            if existing and existing.model_attribution:
+                grounded.model_attribution = existing.model_attribution
+            state.image_evidence_by_label[label] = grounded
         if not state.region_findings:
             state.consistency_warnings.append(
                 "没有可用的病灶级标注；系统未将病例级预览冒充病灶定位。"
@@ -1305,8 +1643,29 @@ class ChestCtAgent:
             state.evidence_by_label,
             state.ct_quality_degraded,
         )
+        visual_warnings: list[str] = []
+        if not state.request.report_text.strip() and state.qwen_vision_used:
+            state.fusion_predictions, visual_warnings = apply_qwen_visual_review(
+                state.fusion_predictions,
+                state.qwen_visual_reviews,
+                minimum_confidence=self.settings.qwen_vision_min_confidence,
+            )
+        fusion_diagnostics = [
+            item
+            for item in state.diagnostic_evidence
+            if item.label != "cardiomegaly"
+            or self.settings.anatomy_quantification_fusion_enabled
+        ]
+        state.fusion_predictions, diagnostic_warnings = apply_diagnostic_tool_evidence(
+            state.fusion_predictions,
+            fusion_diagnostics,
+            state.qwen_visual_reviews,
+            visual_minimum_confidence=self.settings.qwen_vision_min_confidence,
+        )
         state.consistency_warnings.extend(warnings)
         state.consistency_warnings.extend(credibility_warnings)
+        state.consistency_warnings.extend(visual_warnings)
+        state.consistency_warnings.extend(diagnostic_warnings)
         state.tool_trace.append("consistency_checker_tool")
         return state.model_dump(mode="python")
 
@@ -1327,17 +1686,48 @@ class ChestCtAgent:
                 (item.confidence for item in state.ct_predictions if item.name == prediction.name),
                 0.0,
             )
+            visual_review = next(
+                (item for item in state.qwen_visual_reviews if item.name == prediction.name),
+                None,
+            )
+            qwen_visual_score = 0.0
+            if visual_review is not None:
+                if visual_review.status == "positive":
+                    qwen_visual_score = visual_review.confidence
+                elif visual_review.status == "negative":
+                    qwen_visual_score = 1.0 - visual_review.confidence
+                else:
+                    qwen_visual_score = 0.5
+            diagnostic_for_label = [
+                item for item in state.diagnostic_evidence if item.label == prediction.name
+            ]
+            diagnostic_scores = {
+                item.tool: (
+                    item.confidence
+                    if item.verdict == "positive"
+                    else 1.0 - item.confidence
+                    if item.verdict == "negative"
+                    else 0.5
+                )
+                for item in diagnostic_for_label
+            }
             label_outputs.append(
                 LabelOutput(
                     name=prediction.name,
                     status=prediction.status,
                     confidence=prediction.confidence,
-                    source_scores={"ct_model": ct_score, "report_model": report_score},
+                    source_scores={
+                        "ct_model": ct_score,
+                        "report_model": report_score,
+                        "qwen_visual": round(qwen_visual_score, 4),
+                        **{key: round(value, 4) for key, value in diagnostic_scores.items()},
+                    },
                     evidence_from_report=state.evidence_by_label.get(prediction.name, []),
                     evidence_from_image=state.image_evidence_by_label.get(prediction.name, {}),
                     rag_support=prediction.name in docs_by_label,
                     rag_sources=docs_by_label.get(prediction.name, []),
                     need_human_review=True,
+                    diagnostic_tools=diagnostic_for_label,
                 )
             )
 
@@ -1369,6 +1759,8 @@ class ChestCtAgent:
             case_id=state.request.case_id,
             labels=label_outputs,
             ct_preview_images=state.ct_preview_images,
+            qwen_visual_images=state.qwen_visual_images,
+            qwen_visual_reviews=state.qwen_visual_reviews,
             similar_cases=state.similar_cases,
             explanation_zh="",
             disclaimer=self.settings.disclaimer,
@@ -1385,6 +1777,29 @@ class ChestCtAgent:
                     if state.request.ct_volume_path
                     else "not_used"
                 ),
+                ct_attribution_method=(
+                    state.ct_attribution_artifact.method
+                    if state.ct_attribution_artifact
+                    else "not_used"
+                ),
+                ct_attribution_cache_hit=state.ct_attribution_cache_hit,
+                ct_attribution_latency_ms=state.ct_attribution_latency_ms,
+                qwen_vision_used=state.qwen_vision_used,
+                qwen_vision_image_count=len(state.qwen_visual_images),
+                qwen_vision_latency_ms=state.qwen_vision_latency_ms,
+                qwen_vision_fallback_reason=state.qwen_vision_fallback_reason,
+                qwen_grounding_region_count=sum(
+                    len(item.regions) for item in state.qwen_visual_reviews
+                ),
+                qwen_grounding_heatmap_count=sum(
+                    len(item.grounding_heatmap_images)
+                    for item in state.qwen_visual_reviews
+                ),
+                slice_vlm_model=(
+                    self.settings.slice_vlm_model if state.qwen_vision_used else "not_used"
+                ),
+                diagnostic_tool_count=len(state.diagnostic_evidence),
+                diagnostic_tool_latency_ms=state.diagnostic_tool_latency_ms,
                 ct_input_name=state.ct_input_name,
                 ct_input_size_bytes=state.ct_input_size_bytes,
                 ct_input_sha256=state.ct_input_sha256,
@@ -1393,11 +1808,13 @@ class ChestCtAgent:
                 llm_calls=state.llm_calls,
                 llm_fallbacks=state.llm_fallbacks,
                 llm_fallback_reasons=state.llm_fallback_reasons.copy(),
+                peak_gpu_memory_mb=state.ct_peak_gpu_memory_mb,
             ),
             region_findings=region_findings,
             anatomy_masks=state.anatomy_masks,
             approval=state.approval,
             report_graph=state.report_graph,
+            diagnostic_evidence=state.diagnostic_evidence,
         )
         state.draft_response = response
         state.tool_trace.append("structured_output_generator")
@@ -1463,6 +1880,7 @@ class ChestCtAgent:
             "run_text_classifier": "报告候选识别",
             "run_report_graph": "报告实体关系抽取",
             "run_ct_classifier": "CT候选识别",
+            "run_ct_attribution": "CT-CLIP模型归因",
             "run_organ_segmentation": "器官分割",
             "run_lesion_grounding": "病灶定位",
             "grade_retrieval": "检索证据评估",
@@ -1669,6 +2087,7 @@ class ChestCtAgent:
                     "run_text_classifier",
                     "run_report_graph",
                     "run_ct_classifier",
+                    "run_ct_attribution",
                     "run_organ_segmentation",
                     "run_lesion_grounding",
                     "grade_retrieval",

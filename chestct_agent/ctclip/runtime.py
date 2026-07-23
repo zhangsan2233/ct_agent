@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
-import os
+import json
 from pathlib import Path
 import sys
+import time
 import types
+from typing import Any
 
 import nibabel as nib
 import numpy as np
@@ -30,6 +32,9 @@ PATHOLOGIES = {
     "Bronchiectasis": "bronchiectasis",
     "Interlobular septal thickening": "interlobular_septal_thickening",
 }
+
+ATTRIBUTION_METHOD = "gradient_x_token"
+ATTRIBUTION_VERSION = 1
 
 
 class CtClipUnavailable(RuntimeError):
@@ -114,24 +119,10 @@ class CtClipRuntime:
             raise CtClipUnavailable("CT-CLIP requested CUDA, but PyTorch cannot access the GPU.")
         self.device = torch.device(device_name)
 
-        # Prefer an explicit local path, then the standard sibling models/cxrbert
-        # directory.  This keeps the protected CT-CLIP workflow offline after assets
-        # are provisioned and only falls back to the public Hub name for fresh setups.
-        configured_text_model = os.environ.get("CTCLIP_TEXT_MODEL_DIR", "").strip()
-        sibling_text_model = self.checkpoint.parent.parent / "cxrbert"
-        if configured_text_model and Path(configured_text_model).is_dir():
-            text_model_source = configured_text_model
-            text_model_kwargs = {"local_files_only": True}
-        elif sibling_text_model.is_dir():
-            text_model_source = str(sibling_text_model)
-            text_model_kwargs = {"local_files_only": True}
-        else:
-            text_model_source = "microsoft/BiomedVLP-CXR-BERT-specialized"
-            text_model_kwargs = {}
         self.tokenizer = BertTokenizer.from_pretrained(
-            text_model_source, do_lower_case=True, **text_model_kwargs
+            "microsoft/BiomedVLP-CXR-BERT-specialized", do_lower_case=True
         )
-        text_encoder = BertModel.from_pretrained(text_model_source, **text_model_kwargs)
+        text_encoder = BertModel.from_pretrained("microsoft/BiomedVLP-CXR-BERT-specialized")
         text_encoder.resize_token_embeddings(len(self.tokenizer))
         image_encoder = CTViT(
             dim=512,
@@ -193,27 +184,56 @@ class CtClipRuntime:
 
     @staticmethod
     def _center_crop_pad(tensor, target_shape: tuple[int, int, int]):
+        tensor, _ = CtClipRuntime._center_crop_pad_with_metadata(tensor, target_shape)
+        return tensor
+
+    @staticmethod
+    def _center_crop_pad_with_metadata(tensor, target_shape: tuple[int, int, int]):
         import torch.nn.functional as functional
 
         slices = []
+        crop_start: list[int] = []
+        crop_shape: list[int] = []
         for current, target in zip(tensor.shape[-3:], target_shape, strict=True):
             start = max((current - target) // 2, 0)
-            slices.append(slice(start, min(start + target, current)))
+            end = min(start + target, current)
+            slices.append(slice(start, end))
+            crop_start.append(start)
+            crop_shape.append(end - start)
         tensor = tensor[(..., *slices)]
 
         pads: list[int] = []
+        pad_before: list[int] = []
+        pad_after: list[int] = []
         current_shape = tensor.shape[-3:]
         for current, target in reversed(list(zip(current_shape, target_shape, strict=True))):
             total = max(target - current, 0)
-            pads.extend([total // 2, total - total // 2])
-        return functional.pad(tensor, pads, value=-1.0)
+            before = total // 2
+            after = total - before
+            pads.extend([before, after])
+            pad_before.insert(0, before)
+            pad_after.insert(0, after)
+        metadata = {
+            "target_shape": list(target_shape),
+            "crop_start": crop_start,
+            "crop_shape": crop_shape,
+            "pad_before": pad_before,
+            "pad_after": pad_after,
+        }
+        return functional.pad(tensor, pads, value=-1.0), metadata
 
     def _preprocess(self, volume_path: str):
+        tensor, _ = self._preprocess_with_metadata(volume_path)
+        return tensor
+
+    def _preprocess_with_metadata(self, volume_path: str):
         import torch
         import torch.nn.functional as functional
 
         image = nib.load(volume_path)
         volume = image.get_fdata(dtype=np.float32)
+        original_shape = list(volume.shape)
+        original_spacing = [float(value) for value in image.header.get_zooms()[:3]]
         volume = np.clip(volume, -1000.0, 1000.0)
         volume = np.transpose(volume, (2, 0, 1))
         spacing_x, spacing_y, spacing_z = image.header.get_zooms()[:3]
@@ -227,48 +247,256 @@ class CtClipRuntime:
             tensor, size=new_shape, mode="trilinear", align_corners=False
         )
         tensor = tensor / 1000.0
-        return self._center_crop_pad(tensor, (240, 480, 480))
+        tensor, crop_metadata = self._center_crop_pad_with_metadata(
+            tensor, (240, 480, 480)
+        )
+        metadata = {
+            "axis_order": "zxy",
+            "original_shape": original_shape,
+            "original_spacing": original_spacing,
+            "original_affine": np.asarray(image.affine, dtype=float).tolist(),
+            "transposed_shape": list(volume.shape),
+            "resampled_shape": list(new_shape),
+            **crop_metadata,
+        }
+        return tensor, metadata
 
-    def predict(self, volume_path: str) -> dict[str, float]:
-        self._load()
-        import torch
-
+    def _text_tokens(self):
         if self.variant == "lipro":
-            text_tokens = self.tokenizer(
+            return self.tokenizer(
                 "",
                 return_tensors="pt",
                 padding="max_length",
                 truncation=True,
                 max_length=200,
             ).to(self.device)
-        else:
-            prompts: list[str] = []
-            for pathology in PATHOLOGIES:
-                prompts.extend(
-                    [f"{pathology} is present.", f"{pathology} is not present."]
-                )
-            text_tokens = self.tokenizer(
-                prompts,
-                return_tensors="pt",
-                padding="max_length",
-                truncation=True,
-                max_length=64,
-            ).to(self.device)
-        volume = self._preprocess(volume_path).to(self.device)
+
+        prompts: list[str] = []
+        for pathology in PATHOLOGIES:
+            prompts.extend([f"{pathology} is present.", f"{pathology} is not present."])
+        return self.tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=64,
+        ).to(self.device)
+
+    @staticmethod
+    def _gradient_x_token(
+        image_tokens,
+        unnormalized_image_latent,
+        normalized_image_latent,
+        visual_projection_weight,
+        target_gradients,
+    ):
+        """Analytically computes positive Gradient x Token for every target."""
+        import torch
+
+        tokens = image_tokens[0].float()
+        z = unnormalized_image_latent[0].float()
+        u = normalized_image_latent[0].float()
+        target_gradients = target_gradients.float()
+        projection_weight = visual_projection_weight.float()
+
+        norm = z.norm().clamp_min(1e-8)
+        gradient_z = (
+            target_gradients
+            - u.unsqueeze(0)
+            * (target_gradients * u.unsqueeze(0)).sum(dim=-1, keepdim=True)
+        ) / norm
+        gradient_flat = gradient_z @ projection_weight
+        temporal_tokens, height_tokens, width_tokens, embedding_dim = tokens.shape
+        gradient_grid = gradient_flat.reshape(
+            target_gradients.shape[0], height_tokens, width_tokens, embedding_dim
+        ) / float(temporal_tokens)
+        attribution = torch.einsum("thwd,nhwd->nthw", tokens, gradient_grid)
+        attribution = attribution.float().clamp_min(0.0)
+
+        flattened = attribution.flatten(start_dim=1)
+        percentiles = torch.quantile(flattened, 0.99, dim=1).clamp_min(1e-8)
+        attribution = (attribution / percentiles[:, None, None, None]).clamp(0.0, 1.0)
+        return attribution
+
+    def _infer(self, volume_path: str, include_attribution: bool) -> dict[str, Any]:
+        self._load()
+        import torch
+
+        if self.device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(self.device)
+        text_tokens = self._text_tokens()
+        volume, preprocess_metadata = self._preprocess_with_metadata(volume_path)
+        volume = volume.to(self.device)
+        clip_model = self.model.trained_model if self.variant == "lipro" else self.model
 
         with torch.inference_mode(), torch.autocast(
             device_type=self.device.type,
             dtype=torch.float16,
             enabled=self.use_fp16 and self.device.type == "cuda",
         ):
-            logits = self.model(text_tokens, volume, device=self.device)
+            text_latents, image_latents, image_tokens = clip_model(
+                text_tokens,
+                volume,
+                device=self.device,
+                return_latents=True,
+            )
             if self.variant == "lipro":
-                probabilities = logits.sigmoid().reshape(-1)
+                logits = self.model.classifier(self.model.relu(image_latents)).reshape(-1)
+                probabilities_tensor = logits.sigmoid()
             else:
-                probabilities = logits.reshape(len(PATHOLOGIES), 2).softmax(dim=1)[:, 0]
-        return {
+                raw_logits = (
+                    torch.einsum("pd,bd->p", text_latents, image_latents)
+                    * clip_model.temperature.exp()
+                )
+                paired_logits = raw_logits.reshape(len(PATHOLOGIES), 2)
+                probabilities_tensor = paired_logits.softmax(dim=1)[:, 0]
+
+        probabilities = {
             internal_name: float(probability)
             for internal_name, probability in zip(
-                PATHOLOGIES.values(), probabilities.detach().float().cpu(), strict=True
+                PATHOLOGIES.values(),
+                probabilities_tensor.detach().float().cpu(),
+                strict=True,
             )
         }
+        result: dict[str, Any] = {
+            "probabilities": probabilities,
+            "preprocess": preprocess_metadata,
+        }
+        if not include_attribution:
+            return result
+
+        attribution_started = time.perf_counter()
+        try:
+            with torch.inference_mode(), torch.autocast(
+                device_type=self.device.type,
+                dtype=torch.float16,
+                enabled=self.use_fp16 and self.device.type == "cuda",
+            ):
+                pooled_tokens = image_tokens.mean(dim=1).reshape(image_tokens.shape[0], -1)
+                visual_projection = clip_model.to_visual_latent
+                if not isinstance(visual_projection, torch.nn.Linear):
+                    raise CtClipUnavailable(
+                        "CT-CLIP visual projection is not a linear layer; attribution is unavailable."
+                    )
+                unnormalized_image_latent = visual_projection(pooled_tokens)
+                if self.variant == "lipro":
+                    relu_derivative = (image_latents > 0).to(image_latents.dtype)
+                    target_gradients = self.model.classifier.weight * relu_derivative[0]
+                else:
+                    prompt_gradients = text_latents.reshape(len(PATHOLOGIES), 2, -1)
+                    target_gradients = (
+                        prompt_gradients[:, 0] - prompt_gradients[:, 1]
+                    ) * clip_model.temperature.exp()
+                attribution = self._gradient_x_token(
+                    image_tokens,
+                    unnormalized_image_latent,
+                    image_latents,
+                    visual_projection.weight,
+                    target_gradients,
+                )
+            attribution_array = attribution.detach().float().cpu().numpy().astype(np.float16)
+            if not np.isfinite(attribution_array).all():
+                raise ValueError("CT-CLIP attribution contains non-finite values.")
+            result["attributions"] = attribution_array
+            result["method"] = ATTRIBUTION_METHOD
+            result["grid_shape"] = list(attribution_array.shape[1:])
+        except (RuntimeError, ValueError, CtClipUnavailable) as exc:
+            result["attribution_error"] = f"{type(exc).__name__}: {exc}"
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        result["attribution_latency_ms"] = round(
+            (time.perf_counter() - attribution_started) * 1000, 2
+        )
+        if self.device.type == "cuda":
+            result["peak_gpu_memory_mb"] = round(
+                torch.cuda.max_memory_allocated(self.device) / (1024**2), 2
+            )
+        return result
+
+    def predict(self, volume_path: str) -> dict[str, float]:
+        return self._infer(volume_path, include_attribution=False)["probabilities"]
+
+    def predict_with_attribution(self, volume_path: str) -> dict[str, Any]:
+        return self._infer(volume_path, include_attribution=True)
+
+    def deletion_scores(
+        self,
+        volume_path: str,
+        target_label: str,
+        top_token_indices: list[tuple[int, int, int]],
+        random_token_indices: list[tuple[int, int, int]],
+        grid_shape: tuple[int, int, int],
+    ) -> dict[str, float]:
+        """Compares target-score drops after top and random token-patch deletion."""
+        self._load()
+        import torch
+
+        if target_label not in PATHOLOGIES.values():
+            raise ValueError(f"Unknown CT-CLIP target label: {target_label}")
+        text_tokens = self._text_tokens()
+        volume = self._preprocess(volume_path).to(self.device)
+
+        def score(input_volume) -> float:
+            with torch.inference_mode(), torch.autocast(
+                device_type=self.device.type,
+                dtype=torch.float16,
+                enabled=self.use_fp16 and self.device.type == "cuda",
+            ):
+                logits = self.model(text_tokens, input_volume, device=self.device)
+                if self.variant == "lipro":
+                    probabilities = logits.sigmoid().reshape(-1)
+                else:
+                    probabilities = logits.reshape(len(PATHOLOGIES), 2).softmax(dim=1)[
+                        :, 0
+                    ]
+            label_index = list(PATHOLOGIES.values()).index(target_label)
+            return float(probabilities[label_index].detach().float().cpu())
+
+        def occlude(indices: list[tuple[int, int, int]]):
+            output = volume.clone()
+            target_shape = output.shape[-3:]
+            for token_index in indices:
+                bounds: list[tuple[int, int]] = []
+                for index, token_count, target_size in zip(
+                    token_index, grid_shape, target_shape, strict=True
+                ):
+                    start = round(index * target_size / token_count)
+                    end = round((index + 1) * target_size / token_count)
+                    bounds.append((start, max(start + 1, end)))
+                output[
+                    :,
+                    :,
+                    bounds[0][0] : bounds[0][1],
+                    bounds[1][0] : bounds[1][1],
+                    bounds[2][0] : bounds[2][1],
+                ] = -1.0
+            return output
+
+        baseline = score(volume)
+        top_score = score(occlude(top_token_indices))
+        random_score = score(occlude(random_token_indices))
+        return {
+            "baseline_score": baseline,
+            "top_patch_score": top_score,
+            "random_patch_score": random_score,
+            "top_patch_drop": baseline - top_score,
+            "random_patch_drop": baseline - random_score,
+        }
+
+
+def save_attribution_artifact(path: Path, result: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("wb") as handle:
+        np.savez_compressed(
+            handle,
+            attributions=np.asarray(result["attributions"], dtype=np.float16),
+            labels=np.asarray(list(PATHOLOGIES.values())),
+            method=np.asarray(str(result.get("method", ATTRIBUTION_METHOD))),
+            grid_shape=np.asarray(result["grid_shape"], dtype=np.int16),
+            preprocess_json=np.asarray(
+                json.dumps(result["preprocess"], sort_keys=True, ensure_ascii=True)
+            ),
+        )
+    temporary.replace(path)

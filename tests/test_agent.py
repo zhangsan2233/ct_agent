@@ -3,6 +3,7 @@ import sys
 
 import pandas as pd
 import pytest
+from PIL import Image
 
 from chestct_agent.agent.graph import ChestCtAgent
 from chestct_agent.agent.planner import ToolPolicy
@@ -22,9 +23,16 @@ from chestct_agent.schemas import (
     LabelCorrection,
     LabelOutput,
     LabelPrediction,
+    QwenVisualLabelReview,
+    QwenVisualRegion,
 )
-from chestct_agent.tools.consistency_checker import apply_credibility_gate, fuse_predictions
+from chestct_agent.tools.consistency_checker import (
+    apply_credibility_gate,
+    apply_qwen_visual_review,
+    fuse_predictions,
+)
 from chestct_agent.tools.ct_classifier import CtClassifierTool
+from chestct_agent.tools.ct_preprocess import CtPreprocessTool
 from chestct_agent.tools.evidence_extractor import extract_evidence
 from chestct_agent.tools.lesion_grounding import ground_findings
 from chestct_agent.tools.similar_cases import SimilarCaseRetrieverTool
@@ -45,6 +53,58 @@ def local_settings(tmp_path: Path) -> Settings:
         radgraph_enabled=False,
         memory_db_path=tmp_path / "memory.sqlite3",
     )
+
+
+def test_qwen_visual_review_only_changes_high_confidence_ct_candidates():
+    predictions = [
+        LabelPrediction(name="atelectasis", status="uncertain", confidence=0.64, source="ct"),
+        LabelPrediction(name="consolidation", status="positive", confidence=0.77, source="ct"),
+        LabelPrediction(name="pulmonary_nodule", status="negative", confidence=0.30, source="ct"),
+    ]
+    reviews = [
+        QwenVisualLabelReview(name="atelectasis", status="positive", confidence=0.90),
+        QwenVisualLabelReview(name="consolidation", status="negative", confidence=0.90),
+        QwenVisualLabelReview(name="pulmonary_nodule", status="positive", confidence=0.70),
+    ]
+
+    updated, warnings = apply_qwen_visual_review(predictions, reviews, minimum_confidence=0.85)
+
+    assert {item.name: item.status for item in updated} == {
+        "atelectasis": "positive",
+        "consolidation": "uncertain",
+        "pulmonary_nodule": "negative",
+    }
+    assert len(warnings) == 2
+
+
+def test_qwen_grounding_regions_render_as_separate_heatmaps(tmp_path: Path):
+    settings = local_settings(tmp_path)
+    source = tmp_path / "slice_0105_paired.jpg"
+    Image.new("RGB", (768, 412), (80, 80, 80)).save(source)
+    review = QwenVisualLabelReview(
+        name="atelectasis",
+        status="positive",
+        confidence=0.91,
+        regions=[
+            QwenVisualRegion(
+                slice_index=105,
+                window="lung",
+                bbox_2d=[250, 300, 700, 800],
+                confidence=0.88,
+                description_zh="右肺下叶可疑条片影",
+            )
+        ],
+    )
+
+    rendered = CtPreprocessTool(settings).render_qwen_grounding_heatmaps(
+        "grounding-case", [str(source)], [review]
+    )
+
+    output = Path(rendered["atelectasis"][0])
+    assert output.exists()
+    with Image.open(output) as heatmap:
+        assert heatmap.size == (768, 412)
+        assert heatmap.getpixel((180, 250)) != (80, 80, 80)
 
 
 @pytest.mark.asyncio
@@ -506,6 +566,7 @@ def test_tool_policy_selects_grounding_only_for_location_request():
 
     assert "organ_segmentation_tool" not in ToolPolicy.fallback_tools(ordinary)
     assert "lesion_grounding_tool" not in ToolPolicy.fallback_tools(ordinary)
+    assert "ct_attribution_tool" in ToolPolicy.fallback_tools(ordinary)
     assert "organ_segmentation_tool" in ToolPolicy.fallback_tools(localized)
     assert "lesion_grounding_tool" in ToolPolicy.fallback_tools(localized)
 
@@ -702,6 +763,7 @@ def test_ct_classifier_caches_probabilities(tmp_path: Path, monkeypatch: pytest.
             "ctclip_checkpoint": checkpoint,
             "ctclip_source_dir": source,
             "ctclip_python": Path(sys.executable),
+            "ct_attribution_enabled": False,
         }
     )
     tool = CtClassifierTool(settings)
@@ -742,6 +804,7 @@ def test_ct_classifier_rejects_degenerate_all_positive_output(
             "ctclip_source_dir": source,
             "ctclip_python": Path(sys.executable),
             "ct_cache_enabled": False,
+            "ct_attribution_enabled": False,
         }
     )
     tool = CtClassifierTool(settings)
@@ -751,7 +814,7 @@ def test_ct_classifier_rejects_degenerate_all_positive_output(
         lambda path: {label: 0.8 for label in LABEL_IDS},
     )
 
-    predictions, warnings, _ = tool.predict(str(volume), [])
+    predictions, warnings, _, _ = tool.predict(str(volume), [])
 
     assert not any(item.status == "positive" for item in predictions)
     assert all(item.status == "uncertain" for item in predictions)

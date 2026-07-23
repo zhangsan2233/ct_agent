@@ -39,6 +39,62 @@ class LabelPrediction(BaseModel):
     calibration_version: str | None = None
 
 
+class QwenVisualRegion(BaseModel):
+    slice_index: int = Field(ge=0)
+    window: Literal["lung", "mediastinal"]
+    bbox_2d: list[int] = Field(min_length=4, max_length=4)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    description_zh: str = ""
+
+    @field_validator("bbox_2d")
+    @classmethod
+    def validate_normalized_bbox(cls, value: list[int]) -> list[int]:
+        if len(value) != 4:
+            raise ValueError("bbox_2d must contain four coordinates")
+        x1, y1, x2, y2 = [max(0, min(1000, int(item))) for item in value]
+        if x2 <= x1 or y2 <= y1:
+            raise ValueError("bbox_2d must have positive area")
+        return [x1, y1, x2, y2]
+
+
+class QwenVisualLabelReview(BaseModel):
+    name: str
+    status: Literal["positive", "negative", "uncertain"] = "uncertain"
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    slice_indices: list[int] = Field(default_factory=list)
+    evidence_zh: str = ""
+    regions: list[QwenVisualRegion] = Field(default_factory=list)
+    grounding_heatmap_images: list[str] = Field(default_factory=list)
+    backend: str = "qwen"
+    model: str = ""
+    grounding_method: Literal["vlm_bbox_grounding", "qwen_bbox_grounding"] = (
+        "vlm_bbox_grounding"
+    )
+    grounding_note: str = (
+        "切片VLM视觉定位图由模型生成的区域框渲染，不是内部attention、病灶分割或诊断依据。"
+    )
+
+
+class DiagnosticToolEvidence(BaseModel):
+    """Structured, independently auditable evidence from an imaging tool."""
+
+    label: str
+    tool: str
+    backend: str
+    model_version: str = ""
+    verdict: Literal["positive", "negative", "uncertain", "unavailable"]
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    coverage: Literal["complete", "partial", "unavailable"] = "unavailable"
+    metrics: dict[str, float] = Field(default_factory=dict)
+    mask_paths: list[str] = Field(default_factory=list)
+    slice_indices: list[int] = Field(default_factory=list)
+    preview_images: list[str] = Field(default_factory=list)
+    cache_hit: bool = False
+    latency_ms: float = Field(default=0.0, ge=0.0)
+    rationale_zh: str = ""
+    limitation_zh: str = ""
+
+
 class ReportEvidence(BaseModel):
     sentence: str
     label: str
@@ -78,6 +134,31 @@ class ReportGraph(BaseModel):
     warning: str | None = None
 
 
+class ModelAttributionEvidence(BaseModel):
+    method: Literal["gradient_x_token"] = "gradient_x_token"
+    target_label: str
+    target_status: Literal["positive", "negative", "uncertain"]
+    target_score: float = Field(ge=0.0, le=1.0)
+    grid_shape: list[int] = Field(default_factory=list)
+    slice_indices: list[int] = Field(default_factory=list)
+    original_images: list[str] = Field(default_factory=list)
+    overlay_images: list[str] = Field(default_factory=list)
+    cache_hit: bool = False
+    note: str = (
+        "CT-CLIP模型归因图仅解释目标类别阳性分数的空间贡献；"
+        "阴性或不确定标签同样展示，但高亮不表示检出病灶。"
+    )
+
+
+class CtAttributionArtifact(BaseModel):
+    method: Literal["gradient_x_token"] = "gradient_x_token"
+    artifact_path: str
+    grid_shape: list[int] = Field(default_factory=list)
+    preprocess: dict[str, Any] = Field(default_factory=dict)
+    latency_ms: float = Field(default=0.0, ge=0.0)
+    peak_gpu_memory_mb: float | None = Field(default=None, ge=0.0)
+
+
 class EvidenceFromImage(BaseModel):
     slice_range: list[int] = Field(default_factory=list)
     preview_images: list[str] = Field(default_factory=list)
@@ -90,6 +171,7 @@ class EvidenceFromImage(BaseModel):
     bbox_2d: list[int] = Field(default_factory=list)
     bbox_3d: list[int] = Field(default_factory=list)
     anatomy_regions: list[str] = Field(default_factory=list)
+    model_attribution: ModelAttributionEvidence | None = None
 
 
 class RegionFinding(BaseModel):
@@ -138,6 +220,7 @@ class LabelOutput(BaseModel):
     decision_source: Literal["model", "human_correction", "dataset_oracle"] = "model"
     original_status: Literal["positive", "negative", "uncertain"] | None = None
     correction_reason: str = ""
+    diagnostic_tools: list[DiagnosticToolEvidence] = Field(default_factory=list)
 
     @field_validator("evidence_from_report", mode="before")
     @classmethod
@@ -211,6 +294,18 @@ class ExecutionMetadata(BaseModel):
     ct_input_sha256: str | None = None
     ct_quality_degraded: bool = False
     ct_quality_reason: str | None = None
+    ct_attribution_method: str = "not_used"
+    ct_attribution_cache_hit: bool | None = None
+    ct_attribution_latency_ms: float = Field(default=0.0, ge=0.0)
+    qwen_vision_used: bool = False
+    qwen_vision_image_count: int = Field(default=0, ge=0)
+    qwen_vision_latency_ms: float = Field(default=0.0, ge=0.0)
+    qwen_vision_fallback_reason: str | None = None
+    qwen_grounding_region_count: int = Field(default=0, ge=0)
+    qwen_grounding_heatmap_count: int = Field(default=0, ge=0)
+    slice_vlm_model: str = "not_used"
+    diagnostic_tool_count: int = Field(default=0, ge=0)
+    diagnostic_tool_latency_ms: float = Field(default=0.0, ge=0.0)
     llm_calls: int = Field(default=0, ge=0)
     llm_fallbacks: int = Field(default=0, ge=0)
     llm_fallback_reasons: list[str] = Field(default_factory=list)
@@ -321,6 +416,8 @@ class AnalyzeResponse(BaseModel):
     case_id: str
     labels: list[LabelOutput]
     ct_preview_images: list[str] = Field(default_factory=list)
+    qwen_visual_images: list[str] = Field(default_factory=list)
+    qwen_visual_reviews: list[QwenVisualLabelReview] = Field(default_factory=list)
     similar_cases: list[SimilarCase] = Field(default_factory=list)
     explanation_zh: str = ""
     disclaimer: str
@@ -336,6 +433,7 @@ class AnalyzeResponse(BaseModel):
     report_graph: ReportGraph = Field(default_factory=ReportGraph)
     model_reasoning: ModelReasoningReport = Field(default_factory=ModelReasoningReport)
     correction_history: list[CorrectionEvent] = Field(default_factory=list)
+    diagnostic_evidence: list[DiagnosticToolEvidence] = Field(default_factory=list)
 
     @field_validator("labels")
     @classmethod
@@ -380,6 +478,13 @@ class AgentState(BaseModel):
     report_predictions: list[LabelPrediction] = Field(default_factory=list)
     ct_predictions: list[LabelPrediction] = Field(default_factory=list)
     ct_preview_images: list[str] = Field(default_factory=list)
+    qwen_visual_images: list[str] = Field(default_factory=list)
+    qwen_visual_reviews: list[QwenVisualLabelReview] = Field(default_factory=list)
+    qwen_vision_used: bool = False
+    qwen_vision_latency_ms: float = Field(default=0.0, ge=0.0)
+    qwen_vision_fallback_reason: str | None = None
+    diagnostic_evidence: list[DiagnosticToolEvidence] = Field(default_factory=list)
+    diagnostic_tool_latency_ms: float = Field(default=0.0, ge=0.0)
     fusion_predictions: list[LabelPrediction] = Field(default_factory=list)
     rag_queries: list[str] = Field(default_factory=list)
     rag_query_history: list[list[str]] = Field(default_factory=list)
@@ -403,6 +508,10 @@ class AgentState(BaseModel):
     ct_input_sha256: str | None = None
     ct_quality_degraded: bool = False
     ct_quality_reason: str | None = None
+    ct_attribution_artifact: CtAttributionArtifact | None = None
+    ct_attribution_cache_hit: bool | None = None
+    ct_attribution_latency_ms: float = Field(default=0.0, ge=0.0)
+    ct_peak_gpu_memory_mb: float | None = Field(default=None, ge=0.0)
     llm_calls: int = 0
     llm_fallbacks: int = 0
     llm_fallback_reasons: list[str] = Field(default_factory=list)

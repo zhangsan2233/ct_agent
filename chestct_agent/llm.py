@@ -1,5 +1,8 @@
 import asyncio
+import base64
 import json
+import mimetypes
+from pathlib import Path
 import threading
 from dataclasses import dataclass
 from typing import Generic, TypeVar
@@ -289,6 +292,79 @@ class QwenClient:
             if not isinstance(content, str) or not content.strip():
                 raise ValueError(f"empty_content:{choice.get('finish_reason', 'unknown')}")
             return LlmCallResult(content, used_remote=True)
+        except Exception as exc:
+            return LlmCallResult(
+                fallback,
+                used_remote=False,
+                fallback_reason=self._fallback_reason(exc),
+            )
+
+    async def chat_json_with_images(
+        self,
+        system: str,
+        user: str,
+        image_paths: list[str],
+        fallback: dict[str, Any],
+        max_tokens: int | None = None,
+        model: str | None = None,
+    ) -> LlmCallResult[dict[str, Any]]:
+        """Call a vision-capable OpenAI-compatible endpoint with local images."""
+        if self.settings.model_backend == "local-qlora":
+            return LlmCallResult(
+                fallback,
+                used_remote=False,
+                fallback_reason="local_qlora_vision_unsupported",
+            )
+        if not self.is_configured:
+            return LlmCallResult(fallback, used_remote=False, fallback_reason="not_configured")
+        if not image_paths:
+            return LlmCallResult(fallback, used_remote=False, fallback_reason="no_images")
+
+        content: list[dict[str, Any]] = [{"type": "text", "text": user}]
+        try:
+            for image_path in image_paths:
+                path = Path(image_path)
+                encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+                mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{encoded}",
+                            "detail": "high",
+                        },
+                    }
+                )
+        except OSError as exc:
+            return LlmCallResult(
+                fallback,
+                used_remote=False,
+                fallback_reason=f"image_read:{type(exc).__name__}",
+            )
+
+        url = self.settings.openai_compatible_base_url.rstrip("/") + "/chat/completions"
+        payload = {
+            "model": model or self.settings.agent_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": content},
+            ],
+            "temperature": 0.0,
+            "max_tokens": max_tokens or max(self.settings.llm_json_max_tokens, 3072),
+            "response_format": {"type": "json_object"},
+        }
+        self._apply_reasoning_policy(payload)
+        headers = {"Authorization": f"Bearer {self.settings.openai_compatible_api_key}"}
+        try:
+            async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
+            choice = data["choices"][0]
+            response_content = choice["message"].get("content")
+            if not isinstance(response_content, str) or not response_content.strip():
+                raise ValueError(f"empty_content:{choice.get('finish_reason', 'unknown')}")
+            return LlmCallResult(self._parse_json_content(response_content), used_remote=True)
         except Exception as exc:
             return LlmCallResult(
                 fallback,
