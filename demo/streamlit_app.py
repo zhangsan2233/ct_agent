@@ -38,6 +38,9 @@ NODE_NAME_ZH = {
     "run_text_classifier": "报告分类",
     "run_report_graph": "RadGraph-XL报告图谱",
     "run_ct_classifier": "CT 预处理与分类",
+    "run_specialist_diagnostics": "独立专病影像工具",
+    "run_qwen_slice_vqa": "Gemma 4关键切片复核",
+    "run_ct_attribution": "CT-CLIP模型归因",
     "run_organ_segmentation": "器官分割",
     "run_lesion_grounding": "病灶与区域定位",
     "plan_rag_queries": "规划检索问题",
@@ -65,6 +68,8 @@ TOOL_PURPOSE_ZH = {
     "text_classifier_tool": "从报告预测统一的 18 类异常",
     "report_graph_tool": "抽取解剖/观察实体及修饰、位置和提示关系",
     "ct_classifier_tool": "使用 CT-LiPro/CT-CLIP 对 3D CT 进行 18 类分类",
+    "qwen_slice_vqa_tool": "将肺窗与纵隔窗关键切片作为真实图片交给Qwen进行独立视觉复核",
+    "ct_attribution_tool": "为全部18类CT标签生成Gradient × Token模型归因图",
     "organ_segmentation_tool": "读取并对齐 RadGenome 器官及区域 mask",
     "lesion_grounding_tool": "将异常定位到真实切片、bbox 或 mask",
     "medical_rag_tool": "执行 BM25、Dense、RRF 和 Qwen Reranker 检索",
@@ -226,6 +231,8 @@ WORKFLOW_NODE_PHASE = {
     "run_text_classifier": "perception",
     "run_report_graph": "perception",
     "run_ct_classifier": "perception",
+    "run_qwen_slice_vqa": "perception",
+    "run_ct_attribution": "perception",
     "run_organ_segmentation": "perception",
     "run_lesion_grounding": "perception",
     "plan_rag_queries": "retrieval",
@@ -996,23 +1003,29 @@ def render_label_overview(response: AnalyzeResponse) -> None:
 
 
 def render_candidate_evidence(response: AnalyzeResponse) -> None:
+    visible_statuses = (
+        {"positive", "uncertain"}
+        if response.execution.input_mode == "report_only"
+        else {"positive", "uncertain", "negative"}
+    )
+    status_order = {"positive": 0, "uncertain": 1, "negative": 2}
     candidates = sorted(
         (
             label
             for label in response.labels
-            if label.status in {"positive", "uncertain"}
+            if label.status in visible_statuses
         ),
-        key=lambda item: (item.status != "positive", -item.confidence),
+        key=lambda item: (status_order[item.status], -item.confidence),
     )
     if not candidates:
-        st.info("本次没有需要展开的阳性或不确定证据。")
+        st.info("本次没有可展示的标签证据。")
         return
     for label in candidates:
         with st.expander(
             f"{label.name_zh} · {label.status_zh} · {label.confidence:.2f}",
             expanded=label.status == "positive",
         ):
-            score_columns = st.columns(3)
+            score_columns = st.columns(4)
             score_columns[0].metric("融合分数", f"{label.confidence:.2f}")
             score_columns[1].metric(
                 "CT 模型", f"{label.source_scores.get('ct_model', 0.0):.2f}"
@@ -1020,25 +1033,80 @@ def render_candidate_evidence(response: AnalyzeResponse) -> None:
             score_columns[2].metric(
                 "报告模型", f"{label.source_scores.get('report_model', 0.0):.2f}"
             )
+            score_columns[3].metric(
+                "Qwen视觉", f"{label.source_scores.get('qwen_visual', 0.0):.2f}"
+            )
             if label.evidence_from_report:
                 st.markdown("**报告原文证据**")
                 for item in label.evidence_from_report:
                     st.write(item)
             else:
                 st.caption("没有可定位的报告原文证据。")
-            if label.evidence_from_image.preview_images:
-                st.caption(label.evidence_from_image.note)
-                image_columns = st.columns(
-                    min(3, len(label.evidence_from_image.preview_images))
+            image_evidence = label.evidence_from_image
+            attribution = image_evidence.model_attribution
+            mode_images: dict[str, list[str]] = {}
+            if attribution and attribution.original_images:
+                mode_images["原始CT"] = attribution.original_images
+            elif response.ct_preview_images:
+                mode_images["原始CT"] = response.ct_preview_images[:3]
+            if attribution and attribution.overlay_images:
+                mode_images["模型归因"] = attribution.overlay_images
+            if (
+                image_evidence.grounding_type in {"anatomy_mask", "lesion_mask"}
+                and image_evidence.preview_images
+            ):
+                mode_images["RadGenome Mask"] = image_evidence.preview_images
+
+            preferred_mode = "模型归因" if "模型归因" in mode_images else next(
+                iter(mode_images), None
+            )
+            if mode_images and preferred_mode:
+                selected_mode = st.segmented_control(
+                    "影像证据模式",
+                    list(mode_images),
+                    default=preferred_mode,
+                    key=f"evidence_mode::{response.case_id}::{label.name}",
+                    width="stretch",
                 )
-                for column, image_path in zip(
-                    image_columns,
-                    label.evidence_from_image.preview_images,
-                    strict=False,
+                selected_mode = selected_mode or preferred_mode
+                images = mode_images[selected_mode]
+                image_columns = st.columns(min(3, len(images)))
+                for index, (column, image_path) in enumerate(
+                    zip(image_columns, images, strict=False)
                 ):
                     path = Path(image_path)
-                    if path.exists():
-                        column.image(str(path), caption=path.name, width="stretch")
+                    if not path.exists():
+                        continue
+                    caption = path.name
+                    if attribution and selected_mode in {"原始CT", "模型归因"}:
+                        if index < len(attribution.slice_indices):
+                            caption = f"原始 slice {attribution.slice_indices[index]}"
+                    column.image(str(path), caption=caption, width="stretch")
+
+            unavailable_modes = [
+                mode
+                for mode in ("原始CT", "模型归因", "RadGenome Mask")
+                if mode not in mode_images
+            ]
+            if unavailable_modes:
+                st.caption("本标签不可用模式：" + "、".join(unavailable_modes))
+            if attribution:
+                st.markdown("**CT-CLIP模型归因图**")
+                st.caption(
+                    f"方法：Gradient × Token · CT分数："
+                    f"{label.source_scores.get('ct_model', 0.0):.2f} · "
+                    "红→黄表示对该标签阳性分数的促进贡献由低到高。"
+                )
+                if label.status != "positive":
+                    st.info(
+                        f"当前模型判定为{label.status_zh}。热图仍展示阳性分数的贡献区域，"
+                        "不表示该标签被检出，也不代表图中存在病灶。"
+                    )
+                st.warning(attribution.note)
+            elif response.execution.input_mode != "report_only":
+                st.caption(
+                    "未生成归因图：归因计算未启用、缓存不可用或已明确降级。"
+                )
 
 
 def render_model_reasoning(response: AnalyzeResponse) -> None:
@@ -1100,7 +1168,24 @@ def _render_result_stage(response: AnalyzeResponse) -> None:
         key=lambda item: item.confidence,
         reverse=True,
     )
-    focus = (positives or uncertain or [None])[0]
+    attributed_positives = [
+        label
+        for label in positives
+        if label.evidence_from_image.model_attribution
+        and label.evidence_from_image.model_attribution.overlay_images
+    ]
+    focus = (attributed_positives or positives or uncertain or [None])[0]
+    attributed_labels = sorted(
+        (
+            label
+            for label in response.labels
+            if label.evidence_from_image.model_attribution
+            and label.evidence_from_image.model_attribution.overlay_images
+        ),
+        key=lambda item: item.source_scores.get("ct_model", 0.0),
+        reverse=True,
+    )
+    image_focus = focus if focus in attributed_labels else (attributed_labels or [focus])[0]
     if focus is None:
         title = "未检出主要异常"
         eyebrow = "NO PRIMARY FINDING"
@@ -1120,8 +1205,17 @@ def _render_result_stage(response: AnalyzeResponse) -> None:
         )
 
     image_paths: list[str] = []
-    if focus is not None:
-        image_paths.extend(focus.evidence_from_image.preview_images)
+    image_kind = "AXIAL · LUNG WINDOW"
+    if image_focus is not None:
+        attribution = image_focus.evidence_from_image.model_attribution
+        if attribution:
+            image_paths.extend(attribution.overlay_images)
+            if attribution.overlay_images:
+                image_kind = (
+                    "CT-CLIP ATTRIBUTION · "
+                    f"{image_focus.name_zh} · {image_focus.status_zh}"
+                )
+        image_paths.extend(image_focus.evidence_from_image.preview_images)
     image_paths.extend(response.ct_preview_images)
     image_url = ""
     image_name = "CT 证据影像"
@@ -1159,7 +1253,7 @@ def _render_result_stage(response: AnalyzeResponse) -> None:
         "</div>"
         '<div class="result-stage-media">'
         f'{image_html}<div class="result-reticle"></div><div class="result-scan-line"></div>'
-        f'<div class="result-image-meta"><span>AXIAL · LUNG WINDOW</span><strong>{escape(image_name)}</strong></div>'
+        f'<div class="result-image-meta"><span>{escape(image_kind)}</span><strong>{escape(image_name)}</strong></div>'
         "</div></section>"
         '<div class="result-facts">'
         f'<div><span>INPUT</span><strong>{escape(INPUT_MODE_ZH.get(response.execution.input_mode, response.execution.input_mode))}</strong></div>'
@@ -1169,6 +1263,10 @@ def _render_result_stage(response: AnalyzeResponse) -> None:
         "</div>",
         unsafe_allow_html=True,
     )
+    if image_kind.startswith("CT-CLIP"):
+        st.caption(
+            "CT-CLIP模型归因图解释该类别分数的空间贡献，不是病灶分割，也不作为独立诊断依据。"
+        )
 
     review_notes = list(dict.fromkeys([*response.warnings, *response.approval.reasons]))
     if review_notes:
@@ -1227,6 +1325,106 @@ def render_analysis_result(response: AnalyzeResponse) -> None:
                 path = Path(image_path)
                 if path.exists():
                     column.image(str(path), caption=path.name, width="stretch")
+        if response.diagnostic_evidence:
+            st.subheader("独立专病影像工具")
+            st.caption(
+                "这些结果来自3D分割或HU定量，不是CT-CLIP分数的改写。"
+                "肺气肿定量当前只展示，尚未参与最终标签融合。"
+            )
+            for item in response.diagnostic_evidence:
+                title = (
+                    f"{LABEL_ZH.get(item.label, item.label)} · {item.tool} · "
+                    f"{item.verdict} ({item.confidence:.2f})"
+                )
+                with st.expander(title, expanded=item.verdict in {"positive", "uncertain"}):
+                    st.write(item.rationale_zh)
+                    if item.limitation_zh:
+                        st.caption(item.limitation_zh)
+                    metric_columns = st.columns(max(1, min(4, len(item.metrics))))
+                    for column, (name, value) in zip(
+                        metric_columns, item.metrics.items(), strict=False
+                    ):
+                        column.metric(name.replace("_", " "), value)
+                    previews = [Path(path) for path in item.preview_images if Path(path).exists()]
+                    if previews:
+                        image_columns = st.columns(min(3, len(previews)))
+                        for column, path in zip(image_columns, previews[:3], strict=False):
+                            column.image(str(path), caption=path.name, width="stretch")
+        if response.qwen_visual_reviews:
+            visual_model = response.execution.slice_vlm_model
+            st.subheader("Gemma 4关键切片复核")
+            st.caption(
+                f"实际模型：{visual_model}。模型只接收下列关键切片，"
+                "用于交叉检查分割候选，不能替代完整3D阅片。"
+            )
+            visual_columns = st.columns(min(4, len(response.qwen_visual_images)))
+            for column, image_path in zip(
+                visual_columns, response.qwen_visual_images[:4], strict=False
+            ):
+                path = Path(image_path)
+                if path.exists():
+                    column.image(str(path), caption=path.name, width="stretch")
+            st.dataframe(
+                [
+                    {
+                        "异常": LABEL_ZH.get(item.name, item.name),
+                        "视觉判断": item.status,
+                        "视觉置信度": item.confidence,
+                        "支持切片": ", ".join(str(index) for index in item.slice_indices),
+                        "定位区域": len(item.regions),
+                        "定位热图": len(item.grounding_heatmap_images),
+                        "视觉依据": item.evidence_zh,
+                    }
+                    for item in response.qwen_visual_reviews
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+            grounded_reviews = sorted(
+                (
+                    item
+                    for item in response.qwen_visual_reviews
+                    if item.grounding_heatmap_images
+                ),
+                key=lambda item: (item.status == "positive", item.confidence),
+                reverse=True,
+            )
+            if grounded_reviews:
+                st.subheader("切片VLM视觉定位图")
+                st.caption(
+                    "红→黄区域由Qwen返回的视觉定位框渲染，用于说明它在切片中指向哪里。"
+                    "这不是内部attention、病灶分割或独立诊断依据。"
+                )
+                for review in grounded_reviews:
+                    st.markdown(
+                        f"**{LABEL_ZH.get(review.name, review.name)}** · "
+                        f"{review.status} · 视觉置信度 {review.confidence:.2f}"
+                    )
+                    heatmap_columns = st.columns(
+                        min(3, len(review.grounding_heatmap_images))
+                    )
+                    for column, image_path in zip(
+                        heatmap_columns,
+                        review.grounding_heatmap_images[:3],
+                        strict=False,
+                    ):
+                        path = Path(image_path)
+                        if path.exists():
+                            column.image(str(path), caption=path.name, width="stretch")
+                    region_text = "；".join(
+                        f"slice {region.slice_index} · {region.window} · "
+                        f"bbox {region.bbox_2d} · {region.description_zh or '可疑区域'}"
+                        for region in review.regions
+                    )
+                    if region_text:
+                        st.caption(region_text)
+            else:
+                st.info("本次Qwen没有返回通过校验的可视区域，因此不生成定位热图。")
+        elif response.execution.input_mode != "report_only":
+            st.info(
+                "本次Qwen视觉复核未产生结果："
+                f"{response.execution.qwen_vision_fallback_reason or '视觉工具未启用'}"
+            )
         st.subheader("逐项证据")
         render_candidate_evidence(response)
         if response.region_findings:

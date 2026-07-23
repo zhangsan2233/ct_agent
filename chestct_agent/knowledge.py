@@ -32,6 +32,8 @@ TOOL_TRACE_ZH = {
     "report_graph_tool": "构建RadGraph-XL报告图谱",
     "ct_preprocess_tool": "CT 预处理",
     "ct_classifier_tool": "CT 分类",
+    "qwen_slice_vqa_tool": "Qwen视觉切片复核",
+    "ct_attribution_tool": "CT-CLIP 模型归因",
     "organ_segmentation_tool": "器官分割",
     "lesion_grounding_tool": "病灶定位",
     "visual_evidence_tool": "生成图像证据",

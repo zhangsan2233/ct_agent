@@ -114,6 +114,27 @@ returns an explicit warning.
 Successful volume-level probabilities and rendered previews are cached by input/model
 fingerprint. Repeating the same case does not reload CT-CLIP or decode the compressed volume.
 
+### Model attribution and independent review
+
+The CT pipeline can render `Gradient x Token` attribution maps for every CT label. These maps
+explain spatial contributions to the CT-CLIP score; they are not attention weights, lesion
+segmentations, or diagnostic ground truth. Raw attribution volumes stay under ignored
+`artifacts/ct_cache`, and display overlays stay under ignored `static/cases`.
+
+When the configured OpenAI-compatible endpoint accepts image inputs, `qwen_slice_vqa_tool`
+reviews bounded lung-window and mediastinal-window slices with `SLICE_VLM_MODEL`. It does not
+receive the complete 3D volume, and failures leave the CT result unchanged with an explicit
+fallback reason.
+
+The Agent-callable independent volumetric tools are:
+
+- `nodule_segmentation_tool`: TotalSegmentator lung-nodule candidates plus 3D component size.
+- `effusion_segmentation_tool`: pleural and pericardial fluid masks plus volume in mL.
+
+`cardiac_measurement_tool` remains an offline experiment until it is calibrated on a
+representative cohort. The rejected LAA-950 emphysema and raw aortic-HU rules are not registered
+as tools and cannot change final labels.
+
 Install the CUDA dependencies and download the official source and gated checkpoint:
 
 ```powershell

@@ -60,7 +60,13 @@ class ToolPolicy:
                 "evidence_extractor_tool",
             }
         if request.ct_volume_path:
-            allowed.add("ct_classifier_tool")
+            allowed |= {
+                "ct_classifier_tool",
+                "nodule_segmentation_tool",
+                "effusion_segmentation_tool",
+                "qwen_slice_vqa_tool",
+                "ct_attribution_tool",
+            }
             if ToolPolicy.requests_grounding(request):
                 allowed |= {"organ_segmentation_tool", "lesion_grounding_tool"}
         return [name for name in TOOL_REGISTRY if name in allowed]
@@ -76,7 +82,13 @@ class ToolPolicy:
                 "evidence_extractor_tool",
             ]
         if request.ct_volume_path:
-            tools += ["ct_classifier_tool"]
+            tools += [
+                "ct_classifier_tool",
+                "nodule_segmentation_tool",
+                "effusion_segmentation_tool",
+                "qwen_slice_vqa_tool",
+                "ct_attribution_tool",
+            ]
             if ToolPolicy.requests_grounding(request):
                 tools += ["organ_segmentation_tool", "lesion_grounding_tool"]
         tools += ["medical_rag_tool"]
