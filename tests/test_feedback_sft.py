@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 from chestct_agent.config import Settings
 from chestct_agent.feedback import FeedbackItem, FeedbackSubmission
@@ -16,10 +17,19 @@ from chestct_agent.schemas import (
     HumanApproval,
     LabelOutput,
 )
-from chestct_agent.stage2_pipeline import LABELS
+from chestct_agent.stage2_contract import LABELS
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_builds_stage2_sft_only_from_approved_feedback(tmp_path: Path) -> None:
+def _scratch() -> Path:
+    artifacts = ROOT / "artifacts"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix="feedback_", dir=str(artifacts)))
+
+
+def test_builds_stage2_sft_only_from_approved_feedback() -> None:
+    tmp_path = _scratch()
     memory = AgentMemory(Settings(memory_db_path=str(tmp_path / "memory.sqlite3")))
     case_id, session_id = "train_1234_a_1", "feedback-test"
     response = AnalyzeResponse(

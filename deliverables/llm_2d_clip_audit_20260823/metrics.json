@@ -1,0 +1,138 @@
+{
+  "notice": "LLM audits frozen CT-CLIP using 2D slices. Reference labels are report-derived weak labels, not radiologist-adjudicated CT ground truth.",
+  "evaluated_cases": 100,
+  "failed_cases": 0,
+  "label_slots": 800,
+  "verdict_counts": {
+    "confirm": 393,
+    "insufficient_coverage": 336,
+    "reject": 71
+  },
+  "insufficient_rate": 0.42,
+  "judged_slots": 464,
+  "coverage_rate": 0.58,
+  "llm_misjudgment_rate": 0.33405172413793105,
+  "confirm_correct": 283,
+  "confirm_when_clip_wrong": 110,
+  "beneficial_flips": 26,
+  "harmful_flips": 45,
+  "net_flips": -19,
+  "clip_accuracy_vs_weak": 0.6875,
+  "corrected_accuracy_vs_weak": 0.66375,
+  "absolute_accuracy_lift": -0.02375000000000005,
+  "relative_error_reduction": -0.07600000000000015,
+  "per_label": {
+    "arterial_wall_calcification": {
+      "verdict_counts": {
+        "confirm": 53,
+        "reject": 0,
+        "insufficient_coverage": 47
+      },
+      "insufficient_rate": 0.47,
+      "judged": 53,
+      "misjudgment_rate": 0.05660377358490566,
+      "beneficial_flips": 0,
+      "harmful_flips": 0,
+      "clip_accuracy": 0.8,
+      "corrected_accuracy": 0.8
+    },
+    "atelectasis": {
+      "verdict_counts": {
+        "confirm": 60,
+        "reject": 12,
+        "insufficient_coverage": 28
+      },
+      "insufficient_rate": 0.28,
+      "judged": 72,
+      "misjudgment_rate": 0.4305555555555556,
+      "beneficial_flips": 1,
+      "harmful_flips": 11,
+      "clip_accuracy": 0.7,
+      "corrected_accuracy": 0.6
+    },
+    "coronary_artery_wall_calcification": {
+      "verdict_counts": {
+        "confirm": 26,
+        "reject": 0,
+        "insufficient_coverage": 74
+      },
+      "insufficient_rate": 0.74,
+      "judged": 26,
+      "misjudgment_rate": 0.23076923076923078,
+      "beneficial_flips": 0,
+      "harmful_flips": 0,
+      "clip_accuracy": 0.75,
+      "corrected_accuracy": 0.75
+    },
+    "emphysema": {
+      "verdict_counts": {
+        "confirm": 53,
+        "reject": 19,
+        "insufficient_coverage": 28
+      },
+      "insufficient_rate": 0.28,
+      "judged": 72,
+      "misjudgment_rate": 0.25,
+      "beneficial_flips": 13,
+      "harmful_flips": 6,
+      "clip_accuracy": 0.63,
+      "corrected_accuracy": 0.7
+    },
+    "lung_opacity": {
+      "verdict_counts": {
+        "confirm": 68,
+        "reject": 21,
+        "insufficient_coverage": 11
+      },
+      "insufficient_rate": 0.11,
+      "judged": 89,
+      "misjudgment_rate": 0.5168539325842697,
+      "beneficial_flips": 3,
+      "harmful_flips": 18,
+      "clip_accuracy": 0.67,
+      "corrected_accuracy": 0.52
+    },
+    "lymphadenopathy": {
+      "verdict_counts": {
+        "confirm": 47,
+        "reject": 0,
+        "insufficient_coverage": 53
+      },
+      "insufficient_rate": 0.53,
+      "judged": 47,
+      "misjudgment_rate": 0.19148936170212766,
+      "beneficial_flips": 0,
+      "harmful_flips": 0,
+      "clip_accuracy": 0.69,
+      "corrected_accuracy": 0.69
+    },
+    "pulmonary_fibrotic_sequela": {
+      "verdict_counts": {
+        "confirm": 60,
+        "reject": 3,
+        "insufficient_coverage": 37
+      },
+      "insufficient_rate": 0.37,
+      "judged": 63,
+      "misjudgment_rate": 0.3333333333333333,
+      "beneficial_flips": 1,
+      "harmful_flips": 2,
+      "clip_accuracy": 0.62,
+      "corrected_accuracy": 0.61
+    },
+    "pulmonary_nodule": {
+      "verdict_counts": {
+        "confirm": 26,
+        "reject": 16,
+        "insufficient_coverage": 58
+      },
+      "insufficient_rate": 0.58,
+      "judged": 42,
+      "misjudgment_rate": 0.5,
+      "beneficial_flips": 8,
+      "harmful_flips": 8,
+      "clip_accuracy": 0.64,
+      "corrected_accuracy": 0.64
+    }
+  }
+}

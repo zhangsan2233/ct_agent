@@ -5,8 +5,6 @@ import re
 import shutil
 import zipfile
 
-import nibabel as nib
-
 
 MAX_CT_UPLOAD_BYTES = 4 * 1024**3
 MAX_ARCHIVE_UNCOMPRESSED_BYTES = 12 * 1024**3
@@ -46,6 +44,8 @@ def ingest_ct_upload(filename: str, data: bytes, case_id: str, upload_root: Path
     case_dir.mkdir(parents=True, exist_ok=True)
 
     if lower_name.endswith((".nii", ".nii.gz")):
+        import nibabel as nib
+
         suffix = ".nii.gz" if lower_name.endswith(".nii.gz") else ".nii"
         output = case_dir / f"volume{suffix}"
         if not output.exists():
@@ -65,6 +65,40 @@ def ingest_ct_upload(filename: str, data: bytes, case_id: str, upload_root: Path
         return _convert_dicom_zip(data, case_dir)
 
     raise InputIngestionError("CT 仅支持 .nii、.nii.gz 或包含 DICOM 序列的 .zip。")
+
+
+MAX_CXR_UPLOAD_BYTES = 40 * 1024**2
+
+
+def ingest_cxr_upload(filename: str, data: bytes, case_id: str, upload_root: Path) -> Path:
+    """Store a 2D chest radiograph (PNG/JPEG) under a deidentified case directory."""
+    if not data:
+        raise InputIngestionError("上传的 X 光文件为空。")
+    if len(data) > MAX_CXR_UPLOAD_BYTES:
+        raise InputIngestionError("X 光上传文件超过 40 MB。")
+    lower_name = filename.lower()
+    if not lower_name.endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
+        raise InputIngestionError("胸部 X 光示意接口仅支持 .png、.jpg、.jpeg、.webp 或 .bmp。")
+    upload_id = sha256(data).hexdigest()[:16]
+    case_dir = Path(upload_root) / safe_case_id(case_id) / upload_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    suffix = Path(lower_name).suffix
+    output = case_dir / f"cxr{suffix}"
+    output.write_bytes(data)
+    try:
+        from PIL import Image
+
+        image = Image.open(output)
+        image.load()
+        if min(image.size) < 32:
+            raise InputIngestionError("X 光图像尺寸过小。")
+    except InputIngestionError:
+        output.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        output.unlink(missing_ok=True)
+        raise InputIngestionError("无法读取上传的 X 光图像。") from exc
+    return output.resolve()
 
 
 def _convert_dicom_zip(data: bytes, case_dir: Path) -> Path:

@@ -37,10 +37,11 @@ python scripts/initialize_feedback_store.py \
 ```bash
 python scripts/build_feedback_sft.py \
   --db artifacts/memory/agent_memory.sqlite3 \
-  --out-dir artifacts/feedback/sft_candidate_YYYYMMDD
+  --out-dir artifacts/feedback/sft_candidate_YYYYMMDD \
+  --modality ct_chest
 ```
 
-只会读取 `approved` 反馈，并从受控病例上下文恢复报告和完整 CT-CLIP 分数；缺少报告或 8 个 CT 分数的病例会被跳过。输出目录包含 `train.jsonl`、`valid.jsonl` 和不含报告正文的 `manifest.json`，必须保持在 Git 忽略目录中。
+只会读取 `approved` 反馈，并从受控病例上下文恢复报告和完整影像分数（CT：`ct_model`；CXR：`cxr_model`）；`model_version` 须带模态前缀。
 
 ## 服务器阶段
 

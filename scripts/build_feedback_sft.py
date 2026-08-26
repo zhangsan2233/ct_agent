@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from chestct_agent.stage2_pipeline import LABELS, SYSTEM_PROMPT
+from chestct_agent.stage2_contract import LABELS, SYSTEM_PROMPT
 
 
 def patient_id(case_id: str) -> str:
@@ -33,10 +33,19 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
     )
 
 
+def modality_from_model_version(model_version: str) -> str:
+    if model_version.startswith("cxr_chest:"):
+        return "cxr_chest"
+    if model_version.startswith("ct_chest:"):
+        return "ct_chest"
+    return "ct_chest"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
+    parser.add_argument("--modality", choices=["ct_chest", "cxr_chest"], default="ct_chest")
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=20260720)
     args = parser.parse_args()
@@ -65,7 +74,10 @@ def main() -> None:
         grouped.setdefault((event[2], event[3]), []).append(event)
     skipped: dict[str, int] = {"missing_context": 0, "missing_report": 0, "missing_ct_scores": 0}
     examples: list[dict] = []
+    score_key = "ct_model" if args.modality == "ct_chest" else "cxr_model"
     for key, rows in grouped.items():
+        if modality_from_model_version(rows[0][4]) != args.modality:
+            continue
         context = contexts.get(key)
         if context is None:
             skipped["missing_context"] += 1
@@ -81,7 +93,7 @@ def main() -> None:
         response = json.loads(rows[0][7])
         by_label = {item.get("name"): item for item in response.get("labels", [])}
         scores = {
-            label: by_label.get(label, {}).get("source_scores", {}).get("ct_model")
+            label: by_label.get(label, {}).get("source_scores", {}).get(score_key)
             for label in LABELS
         }
         if any(not isinstance(value, (int, float)) for value in scores.values()):
@@ -124,6 +136,7 @@ def main() -> None:
                 "metadata": {
                     "case_id": case_id,
                     "patient_id": patient_id(case_id),
+                    "modality": args.modality,
                     "feedback_event_ids": [row[0] for row in rows],
                     "source_model_versions": sorted({row[4] for row in rows}),
                     "human_reviewed": True,
@@ -140,6 +153,7 @@ def main() -> None:
     write_jsonl(args.out_dir / "valid.jsonl", valid)
     digest = (args.out_dir / "train.jsonl").read_bytes() + (args.out_dir / "valid.jsonl").read_bytes()
     manifest = {
+        "modality": args.modality,
         "approved_feedback_events": len(events),
         "examples": len(examples),
         "train_examples": len(train),

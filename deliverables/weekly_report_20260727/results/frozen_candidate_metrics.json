@@ -1,0 +1,32 @@
+{
+  "evaluation_role": "simulated_feedback_qlora_candidate",
+  "evaluated_cases": 40,
+  "valid_json_cases": 40,
+  "errors": {},
+  "micro": {
+    "true_negative": 217,
+    "true_positive": 62,
+    "false_negative": 23,
+    "false_positive": 18,
+    "precision": 0.775,
+    "recall": 0.7294117647,
+    "f1": 0.7515151515
+  },
+  "ct_evidence": {
+    "expected": 320,
+    "present": 320,
+    "matched": 320,
+    "coverage": 1.0,
+    "fidelity": 1.0
+  },
+  "per_label_f1": {
+    "arterial": 0.4705882353,
+    "atelectasis": 0.9230769231,
+    "coronary": 0.5882352941,
+    "emphysema": 1.0,
+    "lung_opacity": 0.8387096774,
+    "lymphadenopathy": 0.2,
+    "pulmonary_fibrotic_sequela": 0.5714285714,
+    "pulmonary_nodule": 0.9047619048
+  }
+}

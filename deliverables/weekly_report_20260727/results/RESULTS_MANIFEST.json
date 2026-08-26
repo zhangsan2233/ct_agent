@@ -1,0 +1,32 @@
+{
+  "package": "ChestCT-Agent weekly report package",
+  "created_on": "2026-07-27",
+  "contains": [
+    "Aggregated metrics only",
+    "No CT images or NIfTI files",
+    "No report text",
+    "No patient identifiers",
+    "No base-model or CT-CLIP weights",
+    "No inference logs or credentials"
+  ],
+  "source_paths_on_controlled_server": {
+    "simulation_root": "/root/summer_zhl/artifacts/feedback_simulation_20260724",
+    "baseline_metrics": "/root/summer_zhl/artifacts/feedback_simulation_20260724/frozen_baseline_eval/metrics.json",
+    "candidate_metrics": "/root/summer_zhl/artifacts/feedback_simulation_20260724/frozen_candidate_eval/metrics.json",
+    "existing_100_case_eval": "/root/summer_zhl/artifacts/llm_eval/stage2_demo_100"
+  },
+  "reproduction_code": [
+    "scripts/simulate_weak_label_feedback.py",
+    "scripts/prepare_simulation_frozen_eval.py",
+    "scripts/build_feedback_sft.py",
+    "scripts/run_feedback_calibration.py",
+    "scripts/train_qlora.py",
+    "scripts/evaluate_report_evidence.py"
+  ],
+  "repository_docs": [
+    "docs/FEEDBACK_CALIBRATION.md",
+    "docs/FINAL_STAGE_REPORT_20260719.md",
+    "docs/ASSET_SETUP.md",
+    "reproducibility/REBUILD.md"
+  ]
+}

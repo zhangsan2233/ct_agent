@@ -15,6 +15,13 @@ from chestct_agent.input_ingestion import (
     decode_report_bytes,
     ingest_ct_upload,
 )
+from chestct_agent.modalities import (
+    ModalityNotReady,
+    analyze_study,
+    get_modality,
+    ingest_for_modality,
+    list_modalities,
+)
 from chestct_agent.schemas import (
     AgentState,
     AnalyzeRequest,
@@ -93,6 +100,7 @@ def health() -> dict[str, object]:
         "report_graph_ready": agent.report_graph.readiness_error() is None,
         "report_graph_error": agent.report_graph.readiness_error(),
         "radgenome_index_ready": settings.radgenome_index_path.exists(),
+        "modalities": list_modalities(),
     }
 
 
@@ -259,6 +267,59 @@ async def analyze_upload_stream(
                 task.cancel()
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+
+@app.get("/api/modalities")
+def get_modalities() -> dict[str, object]:
+    return {
+        "label_contract": "stage2_eight_labels",
+        "disclaimer": "Research-only interface; not for clinical diagnosis.",
+        "modalities": list_modalities(),
+    }
+
+
+@app.post("/api/modalities/analyze")
+async def analyze_modality(
+    modality: Annotated[str, Form()] = "cxr_chest",
+    case_id: Annotated[str, Form()] = "uploaded_case",
+    report_text: Annotated[str, Form()] = "",
+    image: Annotated[UploadFile | None, File()] = None,
+    report_file: Annotated[UploadFile | None, File()] = None,
+) -> dict[str, object]:
+    try:
+        spec = get_modality(modality)
+        if spec.status == "interface_only":
+            raise ModalityNotReady(spec.note_zh)
+        if spec.id == "ct_chest":
+            raise ModalityNotReady(
+                "胸部 CT 正式链路请使用 Stage-2 演示页或 scripts/run_modality_agent.py --modality ct_chest；"
+                "本 FastAPI 路由不加载 CT-CLIP/Qwen。"
+            )
+        report_parts = [report_text.strip()] if report_text.strip() else []
+        if report_file is not None:
+            report_parts.append(decode_report_bytes(await report_file.read()))
+        merged_report = "\n".join(part for part in report_parts if part).strip()
+        if image is None:
+            raise InputIngestionError("请上传该模态对应的影像文件。")
+        image_path = ingest_for_modality(
+            modality,
+            image.filename or "uploaded_image",
+            await image.read(),
+            case_id,
+            settings.upload_dir,
+        )
+        return analyze_study(
+            modality=modality,
+            case_id=case_id,
+            image_path=image_path,
+            report_text=merged_report,
+            root=Path(__file__).resolve().parents[2],
+            device=settings.local_llm_device if settings.local_llm_device != "auto" else "cuda:0",
+        )
+    except ModalityNotReady as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except (InputIngestionError, FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/chat", response_model=ChatResponse)

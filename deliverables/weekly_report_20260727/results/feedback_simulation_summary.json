@@ -1,0 +1,40 @@
+{
+  "experiment": "simulated_weak_label_feedback_regression_gate",
+  "date": "2026-07-24",
+  "status": "candidate_rejected_not_deployed",
+  "safety_note": "Feedback was simulated from hidden CT-RATE report-derived weak labels. It is not clinical feedback or a clinical validation result.",
+  "source_evaluation": {
+    "input_cases": 100,
+    "feedback_patients": 60,
+    "frozen_patients": 40,
+    "patient_overlap": 0
+  },
+  "feedback_lifecycle": {
+    "events": 58,
+    "approved": 54,
+    "rejected": 4,
+    "eligible_for_server_calibration": true,
+    "minimum_approved_for_candidate": 50
+  },
+  "candidate_training": {
+    "approved_sft_examples": 29,
+    "train_examples": 23,
+    "valid_examples": 6,
+    "epochs": 1,
+    "optimizer_steps": 6,
+    "train_loss": 0.07418,
+    "eval_loss": 0.02231,
+    "trainable_parameters": 43278336,
+    "trainable_parameter_ratio": 0.004578
+  },
+  "frozen_regression_gate": {
+    "baseline_micro_f1": 0.7682119205,
+    "candidate_micro_f1": 0.7515151515,
+    "micro_f1_delta": -0.016696769,
+    "precision_delta": -0.1037878788,
+    "recall_delta": 0.0470588235,
+    "decision_rule": "Do not replace the official adapter when frozen-set F1 decreases.",
+    "decision": "reject_candidate"
+  },
+  "server_artifact_root": "/root/summer_zhl/artifacts/feedback_simulation_20260724"
+}

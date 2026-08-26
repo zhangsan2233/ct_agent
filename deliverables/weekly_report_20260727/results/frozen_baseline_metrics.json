@@ -1,0 +1,32 @@
+{
+  "evaluation_role": "official_stage2_adapter_baseline",
+  "evaluated_cases": 40,
+  "valid_json_cases": 40,
+  "errors": {},
+  "micro": {
+    "true_negative": 227,
+    "true_positive": 58,
+    "false_negative": 27,
+    "false_positive": 8,
+    "precision": 0.8787878788,
+    "recall": 0.6823529412,
+    "f1": 0.7682119205
+  },
+  "ct_evidence": {
+    "expected": 320,
+    "present": 320,
+    "matched": 320,
+    "coverage": 1.0,
+    "fidelity": 1.0
+  },
+  "per_label_f1": {
+    "arterial": 0.6666666667,
+    "atelectasis": 0.9230769231,
+    "coronary": 0.6666666667,
+    "emphysema": 1.0,
+    "lung_opacity": 0.7407407407,
+    "lymphadenopathy": 0.2,
+    "pulmonary_fibrotic_sequela": 0.5714285714,
+    "pulmonary_nodule": 0.9047619048
+  }
+}

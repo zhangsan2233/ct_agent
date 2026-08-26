@@ -50,11 +50,30 @@ Qwen3.5-9B base model and the repository Stage-2 adapter at the configured paths
 
 ```text
 MODEL_BACKEND=local-qlora
-LOCAL_LLM_MODEL_DIR=./models/qwen3_5_9B/Qwen3.5-9B
+LOCAL_LLM_MODEL_DIR=./models/Qwen3.5-9B
 LOCAL_LLM_ADAPTER_DIR=./artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter
 LOCAL_LLM_DEVICE=auto
 LOCAL_LLM_LOAD_IN_4BIT=true
 ```
+
+### Chest X-ray (CXR) Stage-2 parallel adapter
+
+CXR uses the same 8-label JSON schema, Chinese `report_zh`, feedback queue, candidate QLoRA
+training, and frozen-set gate as CT.  The frozen TorchXRayVision encoder maps to eight Stage-2
+scores; the parallel CXR adapter lives under `artifacts/llm_qlora/qwen3_5_9b_cxr_stage2/adapter`
+and is initialized from the frozen CT Stage-2 adapter (never overwriting CT weights).
+
+```bash
+pip install -e ".[cxr]"
+python scripts/fetch_cxr_encoder.py
+python scripts/init_cxr_adapter.py
+python scripts/run_modality_agent.py --modality cxr_chest --image /path/cxr.png --report "..." --case-id cxr_demo
+streamlit run demo/multimodal_app.py
+```
+
+Feedback SFT and calibration accept `--modality cxr_chest` or `ct_chest`.  Promotion requires
+`scripts/compare_modality_adapter_gate.py` to pass on the CXR frozen set (micro-F1 must not
+drop).  See [`docs/FULL_PROJECT_HANDOVER_20260823.md`](docs/FULL_PROJECT_HANDOVER_20260823.md).
 
 Install the local QLoRA dependencies with `pip install -r requirements-llm-train.txt` in the
 GPU environment.

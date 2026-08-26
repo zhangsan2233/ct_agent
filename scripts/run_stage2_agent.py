@@ -23,6 +23,11 @@ def add_model_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--text-model-dir", type=Path, default=defaults.text_model_dir)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--max-new-tokens", type=int, default=1024)
+    parser.add_argument(
+        "--llm-2d-review",
+        action="store_true",
+        help="Enable experimental base-model 2D slice review alongside frozen CT-CLIP (does not change primary JSON).",
+    )
 
 
 def agent_from(args: argparse.Namespace) -> Stage2Agent:
@@ -55,7 +60,13 @@ def main() -> None:
     agent = agent_from(args)
     if args.command == "single":
         run_dir = args.runs_dir / args.case_id
-        result = agent.analyze(case_id=args.case_id, ct_path=args.ct, report_text=read_report(args), run_dir=run_dir)
+        result = agent.analyze(
+            case_id=args.case_id,
+            ct_path=args.ct,
+            report_text=read_report(args),
+            run_dir=run_dir,
+            enable_llm_2d_review=args.llm_2d_review,
+        )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -67,7 +78,13 @@ def main() -> None:
                 report = row.get("report_text", "").strip()
                 if not report and row.get("report_path"):
                     report = Path(row["report_path"]).read_text(encoding="utf-8")
-                result = agent.analyze(case_id=case_id, ct_path=Path(row["ct_path"]), report_text=report, run_dir=args.runs_dir / case_id)
+                result = agent.analyze(
+                    case_id=case_id,
+                    ct_path=Path(row["ct_path"]),
+                    report_text=report,
+                    run_dir=args.runs_dir / case_id,
+                    enable_llm_2d_review=args.llm_2d_review,
+                )
                 record = {"case_id": case_id, "ok": True, "result": result}
             except Exception as exc:
                 record = {"case_id": case_id, "ok": False, "error": f"{type(exc).__name__}: {exc}"}

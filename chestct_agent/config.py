@@ -25,7 +25,7 @@ class Settings(BaseModel):
     model_backend: str = "openai-compatible"
     openai_compatible_base_url: str = "http://localhost:8000/v1"
     openai_compatible_api_key: str = "replace-me"
-    local_llm_model_dir: Path = Path("./models/qwen3_5_9B/Qwen3.5-9B")
+    local_llm_model_dir: Path = Path("./models/Qwen3.5-9B")
     local_llm_adapter_dir: Path = Path(
         "./artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter"
     )

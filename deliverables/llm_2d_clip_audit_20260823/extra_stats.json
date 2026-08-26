@@ -1,0 +1,12 @@
+{
+  "experiment": "stage2_llm_2d_clip_audit_100",
+  "evaluated_cases": 100,
+  "failed_cases": 0,
+  "seconds_per_case_mean": 97.99,
+  "unique_8label_templates": 48,
+  "cases_all_confirm": 14,
+  "cases_all_insufficient": 8,
+  "cases_all_reject": 0,
+  "mean_confidence": 0.7698,
+  "notice": "Aggregates only. Weak labels are report-derived. Not clinical accuracy."
+}

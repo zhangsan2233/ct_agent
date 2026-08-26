@@ -18,14 +18,17 @@ def main() -> None:
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--minimum-approved", type=int, default=50)
+    parser.add_argument("--modality", choices=["ct_chest", "cxr_chest", "all"], default="all")
     args = parser.parse_args()
+    query = "SELECT label, before_status, corrected_status, model_version FROM feedback_events WHERE status='approved'"
     with sqlite3.connect(args.db) as connection:
-        rows = connection.execute(
-            "SELECT label, before_status, corrected_status FROM feedback_events WHERE status='approved'"
-        ).fetchall()
-    changes = Counter(label for label, before, after in rows if before != after)
+        rows = connection.execute(query).fetchall()
+    if args.modality != "all":
+        rows = [row for row in rows if row[3].startswith(f"{args.modality}:") or (args.modality == "ct_chest" and ":" not in row[3])]
+    changes = Counter(label for label, before, after, _version in rows if before != after)
     candidate = {
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "modality": args.modality,
         "approved_feedback_count": len(rows),
         "minimum_approved_feedback": args.minimum_approved,
         "eligible_for_server_calibration": len(rows) >= args.minimum_approved,
