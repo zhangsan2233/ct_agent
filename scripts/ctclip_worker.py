@@ -158,7 +158,7 @@ def main() -> None:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--source-dir", required=True)
     parser.add_argument("--device", default="auto")
-    parser.add_argument("--variant", choices=("lipro", "zeroshot"), default="lipro")
+    parser.add_argument("--variant", choices=("lipro", "zeroshot"), default="zeroshot")
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--output", default="artifacts/evaluation/ctclip_predictions.jsonl")
     parser.add_argument("--cache-dir", default="artifacts/ct_cache")
