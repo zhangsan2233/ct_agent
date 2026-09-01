@@ -1,0 +1,1188 @@
+{
+  "audits": [
+    {
+      "bundle_id": "qwen-tools::train_1065_a_1::arterial_wall_calcification::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "memory_summary mentions ground truth or human labels",
+        "memory_summary longer than 80 Chinese characters",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_11201_a_1::arterial_wall_calcification::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "memory_summary mentions ground truth or human labels",
+        "memory_summary longer than 80 Chinese characters",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_1003_a_1::arterial_wall_calcification::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "memory_summary mentions ground truth or human labels",
+        "memory_summary longer than 80 Chinese characters",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10143_a_1::arterial_wall_calcification::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "memory_summary mentions ground truth or human labels",
+        "memory_summary longer than 80 Chinese characters",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10151_a_1::arterial_wall_calcification::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "memory_summary mentions ground truth or human labels",
+        "memory_summary longer than 80 Chinese characters",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10380_a_1::arterial_wall_calcification::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "memory_summary mentions ground truth or human labels",
+        "memory_summary longer than 80 Chinese characters",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10774_a_1::atelectasis::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "memory_summary mentions ground truth or human labels",
+        "memory_summary longer than 80 Chinese characters",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10178_a_1::atelectasis::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "memory_summary mentions ground truth or human labels",
+        "memory_summary longer than 80 Chinese characters",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10436_a_1::atelectasis::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "The memory candidate and summary rely on the physician feedback overlay (human labels) to confirm the error and to specify the location of atelectasis. The required future evidence includes revealed human labels, which is not allowed.",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10148_a_1::atelectasis::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "The memory candidate and summary rely on the physician feedback overlay showing 'NO POSITIVE PATCH ANNOTATED' to confirm the absence of atelectasis. This is a revealed human label, which is not allowed in future evidence.",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10187_a_1::atelectasis::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "The memory candidate and summary rely on the physician feedback overlay showing 'NO POSITIVE PATCH ANNOTATED' and the reference truth to confirm the error. This is a revealed human label, which is not allowed.",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_11024_a_1::atelectasis::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "The memory candidate and summary rely on the PatchChestCT feedback overlay showing no positive patch and the reference truth to confirm the error. This is a revealed human label, which is not allowed.",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_1003_a_1::bronchiectasis::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "The memory candidate and summary rely on the reference PatchChestCT feedback indicating bronchiectasis is positive with human patch overlays. This is a revealed human label, which is not allowed.",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10163_a_1::bronchiectasis::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "The memory candidate and summary rely on the post-evaluation feedback overlay showing a human patch on slice 105. This is a revealed human label, which is not allowed.",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_11076_a_1::bronchiectasis::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "The memory candidate and summary rely on the post-evaluation physician PatchChestCT feedback overlay showing positive patches. This is a revealed human label, which is not allowed.",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10360_a_1::bronchiectasis::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "The memory candidate and summary rely on the post-evaluation physician PatchChestCT feedback overlay showing 'NO POSITIVE PATCH ANNOTATED'. This is a revealed human label, which is not allowed.",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10365_a_1::bronchiectasis::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single-case candidate cannot be promoted",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "Are the airways truly dilated and lacking tapering, or are the thickened walls secondary to surrounding inflammation?",
+      "future_available_evidence": [
+        "Lung window CT slices",
+        "CT-CLIP score for bronchiectasis"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_1058_a_1::bronchiectasis::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single-case candidate cannot be promoted",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "Are the apparent dilated bronchi truly thick-walled and non-tapering, or are they air bronchograms within consolidation?",
+      "future_available_evidence": [
+        "Lung window CT slices showing the suspected area",
+        "Adjacent slices to assess tapering"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_11253_a_1::consolidation::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single-case candidate cannot be promoted",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "When CT-CLIP gives a zero score for consolidation but the lung window shows a dense opacity, does the opacity contain air bronchograms or other signs of parenchymal consolidation?",
+      "future_available_evidence": [
+        "Lung window images showing the opacity",
+        "Assessment of air bronchograms"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10139_a_1::consolidation::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single-case candidate cannot be promoted",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "Is there any subtle area of increased opacity in the right lower lobe that could represent consolidation?",
+      "future_available_evidence": [
+        "Lung window images of the right lower lobe"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10167_a_1::consolidation::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single-case candidate cannot be promoted",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "On a future case, if consolidation is suspected but CT-CLIP score is 0.0, should I re-inspect the right lower lobe on lung windows across multiple slices?",
+      "future_available_evidence": [
+        "Lung window images at multiple axial levels",
+        "CT-CLIP score for consolidation"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10187_a_1::consolidation::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single-case candidate cannot be promoted",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "Is the opacity associated with volume loss or mediastinal shift?",
+      "future_available_evidence": [
+        "Lung window and mediastinal window images",
+        "Adjacent slice comparison"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_102_a_1::consolidation::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single-case candidate cannot be promoted",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "On a future case with diffuse lung opacity, does the opacity meet the specific criteria for consolidation (homogeneous, air bronchograms, vascular masking) or is it more consistent with ground-glass opacity or other patterns?",
+      "future_available_evidence": [
+        "CT-CLIP score for consolidation",
+        "Multi-slice comparison of opacity morphology",
+        "Presence of air bronchograms or vascular masking"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_11263_a_1::consolidation::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single-case candidate cannot be promoted",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "Is there a focal area of increased attenuation with air bronchograms, or is the lung parenchyma normal?",
+      "future_available_evidence": [
+        "lung window images",
+        "CT-CLIP score"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_1056_a_1::coronary_wall_calcification::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "reference_leakage",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_1069_a_1::coronary_wall_calcification::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "reference_leakage",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10774_a_1::coronary_wall_calcification::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "reference_leakage",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_1105_a_1::coronary_wall_calcification::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "reference_leakage",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_11289_a_1::coronary_wall_calcification::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "reference_leakage",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10766_a_1::coronary_wall_calcification::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "reference_leakage",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10163_a_1::hiatal_hernia::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "reference_leakage",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10336_a_1::hiatal_hernia::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "reference_leakage",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_11232_a_1::hiatal_hernia::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "required_current_case_evidence includes PatchChestCT feedback overlay (ground truth)",
+        "memory_summary mentions ground truth",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_1069_a_1::hiatal_hernia::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "required_current_case_evidence includes PatchChestCT feedback overlay (ground truth)",
+        "memory_summary mentions NO POSITIVE PATCH",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_102_a_1::hiatal_hernia::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "required_current_case_evidence includes PatchChestCT feedback overlay (ground truth)",
+        "memory_summary mentions ground truth",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_1065_a_1::hiatal_hernia::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "required_current_case_evidence includes PatchChestCT feedback overlay (ground truth)",
+        "memory_summary mentions ground truth",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_1032_a_1::lung_opacity::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "required_current_case_evidence includes PatchChestCT feedback overlay (ground truth)",
+        "memory_summary mentions ground truth",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10336_a_1::lung_opacity::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "required_current_case_evidence includes PatchChestCT feedback overlay (ground truth)",
+        "memory_summary mentions ground truth",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_11043_a_1::lung_opacity::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "required_current_case_evidence includes PatchChestCT feedback overlay (ground truth)",
+        "memory_summary mentions ground truth",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10148_a_1::lung_opacity::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": true,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "required_current_case_evidence includes PatchChestCT feedback overlay (ground truth)",
+        "memory_summary mentions ground truth",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": null,
+      "future_available_evidence": [],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10187_a_1::lung_opacity::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single_case_unvalidated",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "On a future case where lung_opacity is reported positive but CT-CLIP score is 0.0, re-inspect the lung windows across all slices to verify if the lung is truly opacified or if normal anatomy is being misinterpreted.",
+      "future_available_evidence": [
+        "Lung window images at multiple levels",
+        "CT-CLIP score for lung_opacity"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10751_a_1::lung_opacity::FP",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single_case_unvalidated",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "Is the opacified hemithorax due to herniated abdominal contents rather than pulmonary pathology?",
+      "future_available_evidence": [
+        "lung window and mediastinal window images",
+        "comparison of adjacent slices to track hernia continuity"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10324_a_1::lymphadenopathy::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single_case_unvalidated",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "On a future case with suspected lymphadenopathy, have you examined all available slices, especially the subcarinal and hilar regions, rather than relying solely on a uniform sampling?",
+      "future_available_evidence": [
+        "Available axial CT slices",
+        "Mediastinal window images"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10354_a_1::lymphadenopathy::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single_case_unvalidated",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "When CT-CLIP returns 0.0 for lymphadenopathy but initial visual assessment is positive, should the visual assessment be trusted?",
+      "future_available_evidence": [
+        "Mediastinal window images at multiple levels (especially mid-upper mediastinum)",
+        "CT-CLIP score for lymphadenopathy"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10432_a_1::lymphadenopathy::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single_case_unvalidated",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "Are there any soft-tissue density masses in the mediastinum or hila that could represent enlarged lymph nodes?",
+      "future_available_evidence": [
+        "Mediastinal window CT slices",
+        "Comparison of adjacent slices for subtle changes"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10774_a_1::pericardial_effusion::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single_case_unvalidated",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "On mediastinal windows, is there a crescentic hypodense collection surrounding the heart?",
+      "future_available_evidence": [
+        "Mediastinal window images at multiple axial levels"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10168_a_1::pericardial_effusion::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single_case_unvalidated",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "On mediastinal windows, is there any abnormal fluid collection around the heart? Re-inspect slices at multiple levels, especially lower axial slices.",
+      "future_available_evidence": [
+        "Mediastinal window CT images showing the heart and pericardial space."
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    },
+    {
+      "bundle_id": "qwen-tools::train_10348_a_1::pericardial_effusion::FN",
+      "actual_error_confirmed": true,
+      "reference_leakage": false,
+      "unsupported_causal_claim": false,
+      "candidate_usable_for_retrieval": false,
+      "rejection_reasons": [
+        "single_case_unvalidated",
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "corrected_review_question": "On mediastinal windows, is there any increased thickness or abnormal density in the pericardial space, especially at the mid-heart levels?",
+      "future_available_evidence": [
+        "Mediastinal window images at multiple axial levels through the heart",
+        "CT-CLIP score for pericardial_effusion"
+      ],
+      "support_count": 1,
+      "promotion_status": "rejected_or_single_case",
+      "allowed_to_flip_prediction": false
+    }
+  ],
+  "usable_candidates": [],
+  "summary": "Chunked DeepSeek audit of current Qwen visual-error memories.",
+  "audit_calls": [
+    {
+      "start": 0,
+      "size": 8,
+      "used_remote": true,
+      "fallback_reason": null,
+      "audits": 8
+    },
+    {
+      "start": 8,
+      "size": 8,
+      "used_remote": true,
+      "fallback_reason": null,
+      "audits": 8
+    },
+    {
+      "start": 16,
+      "size": 8,
+      "used_remote": true,
+      "fallback_reason": null,
+      "audits": 8
+    },
+    {
+      "start": 24,
+      "size": 8,
+      "used_remote": true,
+      "fallback_reason": null,
+      "audits": 8
+    },
+    {
+      "start": 32,
+      "size": 8,
+      "used_remote": true,
+      "fallback_reason": null,
+      "audits": 8
+    },
+    {
+      "start": 40,
+      "size": 8,
+      "used_remote": true,
+      "fallback_reason": null,
+      "audits": 8
+    }
+  ],
+  "memory_group_audits": [
+    {
+      "group_id": "arterial_wall_calcification:FN:other_or_unknown",
+      "label": "arterial_wall_calcification",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_1003_a_1",
+        "train_1065_a_1",
+        "train_11201_a_1"
+      ],
+      "support_count": 3,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当CT-CLIP对动脉壁钙化评分为0但视觉疑似钙化时，勿直接翻转；应重新检查相邻层面，确认是否存在钙化。"
+    },
+    {
+      "group_id": "arterial_wall_calcification:FP:other_or_unknown",
+      "label": "arterial_wall_calcification",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_10143_a_1",
+        "train_10151_a_1",
+        "train_10380_a_1"
+      ],
+      "support_count": 3,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当纵隔窗显示主动脉旁高密度且CT-CLIP评分为0时，应重新检查相邻层面，确认是否为椎体等骨骼结构，避免误判为动脉壁钙化。"
+    },
+    {
+      "group_id": "atelectasis:FN:other_or_unknown",
+      "label": "atelectasis",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_10178_a_1",
+        "train_10436_a_1",
+        "train_10774_a_1"
+      ],
+      "support_count": 3,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当初始视觉发现线性影但CT-CLIP评分为0时，勿直接否定；应重新检查相邻多个层面，确认是否存在肺不张征象。"
+    },
+    {
+      "group_id": "atelectasis:FP:other_or_unknown",
+      "label": "atelectasis",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_10187_a_1",
+        "train_11024_a_1"
+      ],
+      "support_count": 2,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "fewer_than_3_independent_supporting_cases",
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当遇到单侧大片均匀高密度影且无纵隔移位时，应怀疑胸腔积液而非肺不张；重新检查纵隔位置和有无含气肺组织。"
+    },
+    {
+      "group_id": "bronchiectasis:FN:other_or_unknown",
+      "label": "bronchiectasis",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_1003_a_1",
+        "train_11076_a_1"
+      ],
+      "support_count": 2,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "fewer_than_3_independent_supporting_cases",
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "评估支气管扩张时，请系统检查多个层面的肺窗图像，特别关注上叶和下叶，寻找支气管壁增厚或扩张的迹象。"
+    },
+    {
+      "group_id": "bronchiectasis:FP:other_or_unknown",
+      "label": "bronchiectasis",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_10360_a_1",
+        "train_1058_a_1"
+      ],
+      "support_count": 2,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "fewer_than_3_independent_supporting_cases",
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当怀疑支气管扩张且CT-CLIP评分为0时，重新检查相邻层面，区分空气支气管征与真正扩张，避免将实变内气道误判为支气管扩张。"
+    },
+    {
+      "group_id": "consolidation:FN:other_or_unknown",
+      "label": "consolidation",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_11253_a_1"
+      ],
+      "support_count": 1,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "memory_summary_text": "当CT-CLIP对实变得分为0但肺窗见大片高密度影时，应重新检查是否存在空气支气管征，不要仅凭工具分数否定视觉判断。"
+    },
+    {
+      "group_id": "consolidation:FN:visual_misinterpretation",
+      "label": "consolidation",
+      "failure_family": "visual_misinterpretation",
+      "source_case_ids": [
+        "train_10139_a_1",
+        "train_10167_a_1"
+      ],
+      "support_count": 2,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "memory_summary_text": "当评估右下肺时，若发现轻微密度增高影，请重新检查肺窗图像，并对比相邻层面，以确认是否存在实变。"
+    },
+    {
+      "group_id": "consolidation:FP:other_or_unknown",
+      "label": "consolidation",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_10187_a_1",
+        "train_102_a_1",
+        "train_11263_a_1"
+      ],
+      "support_count": 3,
+      "candidate_usable_for_retrieval": true,
+      "promotion_status": "provisional",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [],
+      "memory_summary_text": "当遇到大面积单侧肺实变影时，注意观察有无容积缩小和纵隔移位；若有，应优先考虑肺不张而非实变，并重新检查相邻层面。"
+    },
+    {
+      "group_id": "coronary_wall_calcification:FN:other_or_unknown",
+      "label": "coronary_wall_calcification",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_1069_a_1",
+        "train_10774_a_1"
+      ],
+      "support_count": 2,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "fewer_than_3_independent_supporting_cases",
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当评估冠状动脉壁钙化且初始判断为阴性时，请重新检查多个纵隔窗层面，特别是包含心脏的中胸部层面（如100-150层），不要仅依赖低层面或CT-CLIP分数。"
+    },
+    {
+      "group_id": "coronary_wall_calcification:FP:other_or_unknown",
+      "label": "coronary_wall_calcification",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_10766_a_1",
+        "train_1105_a_1",
+        "train_11289_a_1"
+      ],
+      "support_count": 3,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当纵隔窗显示心脏附近高密度影时，需确认是否沿冠状动脉走行；若CT-CLIP评分为0，应重新检查相邻层面，避免将主动脉钙化误判为冠状动脉钙化。"
+    },
+    {
+      "group_id": "hiatal_hernia:FN:other_or_unknown",
+      "label": "hiatal_hernia",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_10163_a_1",
+        "train_11232_a_1"
+      ],
+      "support_count": 2,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "fewer_than_3_independent_supporting_cases",
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当视觉提示食管裂孔疝但CT-CLIP评分为0时，请重新检查所有膈肌层面，特别是55-75层，确认胃泡位置。"
+    },
+    {
+      "group_id": "hiatal_hernia:FP:other_or_unknown",
+      "label": "hiatal_hernia",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_102_a_1",
+        "train_1065_a_1",
+        "train_1069_a_1"
+      ],
+      "support_count": 3,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当胃泡位于膈下且CT-CLIP评分为0时，勿报食管裂孔疝；请对比相邻层面确认膈肌连续性。"
+    },
+    {
+      "group_id": "lung_opacity:FN:other_or_unknown",
+      "label": "lung_opacity",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_1032_a_1",
+        "train_10336_a_1",
+        "train_11043_a_1"
+      ],
+      "support_count": 3,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当CT-CLIP对lung_opacity评分为0但初判阳性时，务必重新检查所有层面，特别是下肺，并对比相邻层面寻找磨玻璃影。"
+    },
+    {
+      "group_id": "lung_opacity:FP:other_or_unknown",
+      "label": "lung_opacity",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_10148_a_1",
+        "train_10187_a_1",
+        "train_10751_a_1"
+      ],
+      "support_count": 3,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "source_reference_leakage"
+      ],
+      "memory_summary_text": "当视觉提示肺完全实变但CT-CLIP评分为0时，重新检查相邻层面，确认是否存在正常充气肺组织，避免误判。"
+    },
+    {
+      "group_id": "lymphadenopathy:FN:other_or_unknown",
+      "label": "lymphadenopathy",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_10324_a_1",
+        "train_10354_a_1",
+        "train_10432_a_1"
+      ],
+      "support_count": 3,
+      "candidate_usable_for_retrieval": true,
+      "promotion_status": "provisional",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [],
+      "memory_summary_text": "当怀疑淋巴结肿大时，不要仅依赖均匀采样；请重新检查所有可用层面，特别是纵隔和肺门区域，并调用切片复查工具。"
+    },
+    {
+      "group_id": "pericardial_effusion:FN:other_or_unknown",
+      "label": "pericardial_effusion",
+      "failure_family": "other_or_unknown",
+      "source_case_ids": [
+        "train_10348_a_1",
+        "train_10774_a_1"
+      ],
+      "support_count": 2,
+      "candidate_usable_for_retrieval": false,
+      "promotion_status": "rejected_or_candidate",
+      "allowed_to_flip_prediction": false,
+      "rejection_reasons": [
+        "fewer_than_3_independent_supporting_cases"
+      ],
+      "memory_summary_text": "当评估心包积液时，若CT-CLIP得分为0但纵隔窗显示心包增厚或密度异常，请重新检查相邻层面，不要仅依赖工具得分。"
+    }
+  ],
+  "usable_memory_groups": [
+    "consolidation:FP:other_or_unknown",
+    "lymphadenopathy:FN:other_or_unknown"
+  ],
+  "model": "deepseek-v4-flash-vision-exp",
+  "used_remote": true,
+  "fallback_reason": null,
+  "activation_status": "provisional_retrieval_only"
+}

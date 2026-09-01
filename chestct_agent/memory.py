@@ -19,6 +19,7 @@ class AgentMemory:
     """Local audit, case-context, and conversation memory backed by SQLite."""
 
     def __init__(self, settings: Settings):
+        self.settings = settings
         self.path = Path(settings.memory_db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
@@ -73,6 +74,14 @@ class AgentMemory:
                 ON feedback_events(status, created_at)
                 """
             )
+            feedback_columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(feedback_events)").fetchall()
+            }
+            if "annotations_json" not in feedback_columns:
+                connection.execute(
+                    "ALTER TABLE feedback_events ADD COLUMN annotations_json TEXT NOT NULL DEFAULT '[]'"
+                )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS approvals (
@@ -112,6 +121,25 @@ class AgentMemory:
                 """
                 CREATE INDEX IF NOT EXISTS idx_conversation_session_case
                 ON conversation_messages(session_id, case_id, id)
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS experience_memories (
+                    id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    experiment_id TEXT NOT NULL,
+                    fold INTEGER NOT NULL,
+                    label TEXT NOT NULL,
+                    source_case_ids_json TEXT NOT NULL,
+                    memory_json TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_experience_memory_experiment_label
+                ON experience_memories(experiment_id, label, fold)
                 """
             )
             connection.execute(
@@ -276,19 +304,23 @@ class AgentMemory:
                     INSERT INTO feedback_events(
                         id, created_at, session_id, case_id, reviewer, reviewer_role,
                         model_version, label, before_status, corrected_status, reason,
-                        status, response_snapshot_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                        status, response_snapshot_json, annotations_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
                     """,
                     (event_id, created_at, submission.session_id, case_id, submission.reviewer,
                      submission.reviewer_role, submission.model_version, item.label,
                      labels[item.label], item.corrected_status, item.reason,
-                     response.model_dump_json()),
+                     response.model_dump_json(),
+                     json.dumps(
+                         [annotation.model_dump() for annotation in item.annotations],
+                         ensure_ascii=False,
+                     )),
                 )
                 records.append({"id": event_id, "status": "pending", "label": item.label})
         return records
 
     def list_feedback(self, status: str | None = None, limit: int = 100) -> list[dict[str, str]]:
-        query = "SELECT id, created_at, session_id, case_id, reviewer, reviewer_role, model_version, label, before_status, corrected_status, reason, status, reviewed_by, reviewed_at, review_note FROM feedback_events"
+        query = "SELECT id, created_at, session_id, case_id, reviewer, reviewer_role, model_version, label, before_status, corrected_status, reason, status, reviewed_by, reviewed_at, review_note, annotations_json FROM feedback_events"
         params: tuple[object, ...] = ()
         if status:
             query += " WHERE status=?"
@@ -296,8 +328,11 @@ class AgentMemory:
         query += " ORDER BY created_at DESC LIMIT ?"
         with self._connect() as connection:
             rows = connection.execute(query, (*params, max(1, min(limit, 500)))).fetchall()
-        keys = ["id", "created_at", "session_id", "case_id", "reviewer", "reviewer_role", "model_version", "label", "before_status", "corrected_status", "reason", "status", "reviewed_by", "reviewed_at", "review_note"]
-        return [dict(zip(keys, row, strict=True)) for row in rows]
+        keys = ["id", "created_at", "session_id", "case_id", "reviewer", "reviewer_role", "model_version", "label", "before_status", "corrected_status", "reason", "status", "reviewed_by", "reviewed_at", "review_note", "annotations_json"]
+        records = [dict(zip(keys, row, strict=True)) for row in rows]
+        for record in records:
+            record["annotations"] = json.loads(record.pop("annotations_json") or "[]")
+        return records
 
     def review_feedback(self, event_id: str, status: str, reviewer: str, note: str = "") -> dict[str, str]:
         reviewed_at = datetime.now(timezone.utc).isoformat()
@@ -309,7 +344,34 @@ class AgentMemory:
             ).rowcount
         if not updated:
             raise LookupError(f"Pending feedback event not found: {event_id}")
-        return {"id": event_id, "status": status, "reviewed_by": reviewer, "reviewed_at": reviewed_at}
+        result = {"id": event_id, "status": status, "reviewed_by": reviewer, "reviewed_at": reviewed_at}
+        if status == "approved":
+            with self._connect() as connection:
+                row = connection.execute(
+                    """SELECT case_id, label, before_status, corrected_status, reason,
+                    annotations_json FROM feedback_events WHERE id=?""",
+                    (event_id,),
+                ).fetchone()
+            if row is not None:
+                case_id, label, before_status, corrected_status, reason, annotations_json = row
+                memory_id = self.record_experience_memory(
+                    experiment_id=self.settings.experience_memory_experiment_id,
+                    fold=-1,
+                    label=label,
+                    source_case_ids=[case_id],
+                    memory={
+                        "feedback_event_id": event_id,
+                        "lesson": reason,
+                        "visual_lesson": reason,
+                        "before_status": before_status,
+                        "corrected_status": corrected_status,
+                        "annotations": json.loads(annotations_json or "[]"),
+                        "scope": "医生审核通过的病例级经验；仅用于复查策略，不替代当前病例证据。",
+                        "prohibition": "Memory is review policy context, never patient evidence.",
+                    },
+                )
+                result["memory_id"] = memory_id
+        return result
 
     def append_message(
         self, session_id: str, case_id: str, role: str, content: str
@@ -354,6 +416,111 @@ class AgentMemory:
                 """,
                 (session_id, case_id),
             )
+
+    def record_experience_memory(
+        self,
+        *,
+        experiment_id: str,
+        fold: int,
+        label: str,
+        source_case_ids: list[str],
+        memory: dict,
+    ) -> str:
+        memory_id = str(uuid.uuid4())
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO experience_memories(
+                    id, created_at, experiment_id, fold, label,
+                    source_case_ids_json, memory_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    memory_id,
+                    datetime.now(timezone.utc).isoformat(),
+                    experiment_id,
+                    int(fold),
+                    label,
+                    json.dumps(source_case_ids, ensure_ascii=False),
+                    json.dumps(memory, ensure_ascii=False),
+                ),
+            )
+        return memory_id
+
+    def list_experience_memories(
+        self,
+        *,
+        experiment_id: str,
+        label: str | None = None,
+        fold: int | None = None,
+    ) -> list[dict]:
+        clauses = ["experiment_id=?"]
+        params: list[object] = [experiment_id]
+        if label is not None:
+            clauses.append("label=?")
+            params.append(label)
+        if fold is not None:
+            clauses.append("fold=?")
+            params.append(int(fold))
+        query = (
+            "SELECT id, created_at, experiment_id, fold, label, "
+            "source_case_ids_json, memory_json FROM experience_memories WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY fold, label, created_at"
+        )
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [
+            {
+                "id": row[0],
+                "created_at": row[1],
+                "experiment_id": row[2],
+                "fold": row[3],
+                "label": row[4],
+                "source_case_ids": json.loads(row[5]),
+                "memory": json.loads(row[6]),
+            }
+            for row in rows
+        ]
+
+    def experience_prompt_context(
+        self,
+        *,
+        experiment_id: str,
+        labels: list[str],
+        fold: int = -1,
+        limit: int = 9,
+    ) -> tuple[list[dict], list[str]]:
+        selected: list[dict] = []
+        memory_ids: list[str] = []
+        for label in labels:
+            records = self.list_experience_memories(
+                experiment_id=experiment_id,
+                label=label,
+                fold=fold,
+            )
+            if not records:
+                continue
+            record = records[-1]
+            value = record["memory"]
+            selected.append(
+                {
+                    "label": label,
+                    "lesson": value.get("visual_lesson") or value.get("lesson", ""),
+                    "decision_threshold": value.get("threshold"),
+                    "false_positives_seen": value.get("false_positives_at_0_5"),
+                    "false_negatives_seen": value.get("false_negatives_at_0_5"),
+                    "scope": value.get("scope", ""),
+                    "prohibition": value.get(
+                        "prohibition",
+                        "Memory is policy context, never evidence for this patient.",
+                    ),
+                }
+            )
+            memory_ids.append(record["id"])
+            if len(selected) >= limit:
+                break
+        return selected, memory_ids
 
     def set_approval(self, case_id: str, status: str, reviewer: str, note: str = "") -> None:
         with self._connect() as connection:

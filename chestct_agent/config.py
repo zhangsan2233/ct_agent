@@ -25,6 +25,8 @@ class Settings(BaseModel):
     model_backend: str = "openai-compatible"
     openai_compatible_base_url: str = "http://localhost:8000/v1"
     openai_compatible_api_key: str = "replace-me"
+    vision_openai_compatible_base_url: str = ""
+    vision_openai_compatible_api_key: str = ""
     local_llm_model_dir: Path = Path("./models/Qwen3.5-9B")
     local_llm_adapter_dir: Path = Path(
         "./artifacts/llm_qlora/qwen3_5_9b_ctclip_stage2_500_2ep/adapter"
@@ -56,6 +58,9 @@ class Settings(BaseModel):
     ctclip_device: str = "auto"
     ctclip_use_fp16: bool = True
     ctclip_timeout_seconds: float = 600.0
+    ctclip_service_enabled: bool = False
+    ctclip_service_url: str = "http://127.0.0.1:8090"
+    ctclip_service_api_key: str = "local-ctclip"
     ct_cache_enabled: bool = True
     ct_max_positive_labels: int = Field(default=11, ge=1, le=18)
     ct_attribution_enabled: bool = True
@@ -83,6 +88,10 @@ class Settings(BaseModel):
     anatomy_quantification_fusion_enabled: bool = False
     cardiothoracic_ratio_positive: float = Field(default=0.5, ge=0.2, le=0.9)
     memory_db_path: Path = Path("./artifacts/memory/agent_memory.sqlite3")
+    experience_memory_enabled: bool = False
+    experience_memory_experiment_id: str = "patchchestct-feedback-memory-v1"
+    experience_memory_fold: int = Field(default=-1, ge=-1)
+    experience_memory_max_items: int = Field(default=9, ge=1, le=36)
     agent_dynamic_planning: bool = True
     tool_max_retries: int = Field(default=1, ge=0, le=3)
     top_k_similar: int = 5
@@ -155,6 +164,14 @@ def get_settings() -> Settings:
         openai_compatible_api_key=_setting_value(
             "openai_compatible_api_key", defaults.openai_compatible_api_key
         ),
+        vision_openai_compatible_base_url=_setting_value(
+            "vision_openai_compatible_base_url",
+            defaults.vision_openai_compatible_base_url,
+        ),
+        vision_openai_compatible_api_key=_setting_value(
+            "vision_openai_compatible_api_key",
+            defaults.vision_openai_compatible_api_key,
+        ),
         local_llm_model_dir=_setting_value(
             "local_llm_model_dir", defaults.local_llm_model_dir
         ),
@@ -204,6 +221,15 @@ def get_settings() -> Settings:
         ctclip_use_fp16=_setting_value("ctclip_use_fp16", defaults.ctclip_use_fp16),
         ctclip_timeout_seconds=_setting_value(
             "ctclip_timeout_seconds", defaults.ctclip_timeout_seconds
+        ),
+        ctclip_service_enabled=_setting_value(
+            "ctclip_service_enabled", defaults.ctclip_service_enabled
+        ),
+        ctclip_service_url=_setting_value(
+            "ctclip_service_url", defaults.ctclip_service_url
+        ),
+        ctclip_service_api_key=_setting_value(
+            "ctclip_service_api_key", defaults.ctclip_service_api_key
         ),
         ct_cache_enabled=_setting_value("ct_cache_enabled", defaults.ct_cache_enabled),
         ct_max_positive_labels=_setting_value(
@@ -264,6 +290,19 @@ def get_settings() -> Settings:
             "cardiothoracic_ratio_positive", defaults.cardiothoracic_ratio_positive
         ),
         memory_db_path=_setting_value("memory_db_path", defaults.memory_db_path),
+        experience_memory_enabled=_setting_value(
+            "experience_memory_enabled", defaults.experience_memory_enabled
+        ),
+        experience_memory_experiment_id=_setting_value(
+            "experience_memory_experiment_id",
+            defaults.experience_memory_experiment_id,
+        ),
+        experience_memory_fold=_setting_value(
+            "experience_memory_fold", defaults.experience_memory_fold
+        ),
+        experience_memory_max_items=_setting_value(
+            "experience_memory_max_items", defaults.experience_memory_max_items
+        ),
         agent_dynamic_planning=_setting_value(
             "agent_dynamic_planning", defaults.agent_dynamic_planning
         ),

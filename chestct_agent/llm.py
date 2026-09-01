@@ -342,7 +342,15 @@ class QwenClient:
                 fallback_reason=f"image_read:{type(exc).__name__}",
             )
 
-        url = self.settings.openai_compatible_base_url.rstrip("/") + "/chat/completions"
+        vision_base_url = (
+            self.settings.vision_openai_compatible_base_url
+            or self.settings.openai_compatible_base_url
+        )
+        vision_api_key = (
+            self.settings.vision_openai_compatible_api_key
+            or self.settings.openai_compatible_api_key
+        )
+        url = vision_base_url.rstrip("/") + "/chat/completions"
         payload = {
             "model": model or self.settings.agent_model,
             "messages": [
@@ -354,7 +362,7 @@ class QwenClient:
             "response_format": {"type": "json_object"},
         }
         self._apply_reasoning_policy(payload)
-        headers = {"Authorization": f"Bearer {self.settings.openai_compatible_api_key}"}
+        headers = {"Authorization": f"Bearer {vision_api_key}"}
         try:
             async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
                 response = await client.post(url, headers=headers, json=payload)

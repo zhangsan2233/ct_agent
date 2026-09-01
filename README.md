@@ -294,6 +294,23 @@ history is stored in SQLite and can be inspected at
 streamlit run demo/streamlit_app.py
 ```
 
+The main Streamlit app also exposes a nine-label PatchChestCT validation path. It runs a
+Qwen blinded screen, uses CT-CLIP to nominate candidates, adjudicates each candidate as a
+separate vision task, retrieves audited error memories, and renders Gradient x Token maps.
+Clinician feedback supports per-label correction and draggable CT bounding boxes; approved
+feedback is versioned in SQLite before it becomes retrievable Memory. The bundled
+`reproducibility/validated_memory` files contain the 17 audited Memory groups and aggregate
+50-case metrics only, not CT images or patient reports.
+
+Start the project overview from the Streamlit sidebar to inspect the workflow, tools, and all
+17 Memory groups. Configure a separate vision endpoint when needed:
+
+```text
+VISION_OPENAI_COMPATIBLE_BASE_URL=https://your-vision-endpoint/v1
+VISION_OPENAI_COMPATIBLE_API_KEY=...
+VALIDATED_MEMORY_VISION_MODEL=qwen/qwen3-vl-30b-a3b-instruct
+```
+
 ## Download CT-RATE Metadata Files
 
 After Hugging Face access is approved:
