@@ -120,7 +120,21 @@ def test_feedback_requires_review_before_it_is_approved(tmp_path, monkeypatch):
             "reviewer": "user-a",
             "reviewer_role": "clinician",
             "model_version": "stage2-merged-v1",
-            "items": [{"label": "pulmonary_nodule", "corrected_status": "negative"}],
+            "items": [
+                {
+                    "label": "pulmonary_nodule",
+                    "corrected_status": "negative",
+                    "reason": "The candidate follows a vessel on adjacent slices.",
+                    "annotations": [
+                        {
+                            "slice_index": 118,
+                            "image_path": "static/cases/feedback-case/slice_118.png",
+                            "bbox_2d": [120, 160, 280, 340],
+                            "note": "reviewed region",
+                        }
+                    ],
+                }
+            ],
         },
     )
     event_id = submitted.json()["events"][0]["id"]
@@ -132,8 +146,17 @@ def test_feedback_requires_review_before_it_is_approved(tmp_path, monkeypatch):
 
     assert submitted.status_code == 200
     assert pending.json()["events"][0]["status"] == "pending"
+    assert pending.json()["events"][0]["annotations"][0]["bbox_2d"] == [
+        120,
+        160,
+        280,
+        340,
+    ]
     assert approved.status_code == 200
     assert approved.json()["status"] == "approved"
+    memories = client.get("/api/memories")
+    assert memories.status_code == 200
+    assert memories.json()["memories"][0]["source_case_ids"] == ["feedback-case"]
 
 
 def test_case_conversation_keeps_history_and_streams_steps(tmp_path, monkeypatch):

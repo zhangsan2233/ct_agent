@@ -1,10 +1,12 @@
 import asyncio
 from contextlib import asynccontextmanager
 import json
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from chestct_agent.agent.graph import ChestCtAgent
@@ -29,8 +31,15 @@ from chestct_agent.schemas import (
     ChatRequest,
     ChatResponse,
     CorrectionRequest,
+    ExecutionMetadata,
     ExecutionEvent,
+    HumanApproval,
+    LabelOutput,
     SandboxCorrectionRequest,
+)
+from chestct_agent.validated_memory_pipeline import (
+    ValidatedMemoryPipeline,
+    ValidatedStage,
 )
 
 @asynccontextmanager
@@ -47,13 +56,94 @@ app = FastAPI(
 )
 
 settings = get_settings()
+settings.static_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
 agent = ChestCtAgent(settings)
+validated_memory_pipeline = ValidatedMemoryPipeline(settings)
 
 
 class ApprovalRequest(BaseModel):
     status: str
     reviewer: str
     note: str = ""
+
+
+class ValidatedMemoryServerRequest(BaseModel):
+    case_id: str
+    ct_volume_path: str
+    session_id: str = "validated-memory"
+
+
+def _validated_memory_stream(
+    case_id: str, ct_path: Path, session_id: str
+) -> StreamingResponse:
+    async def stream():
+        queue: asyncio.Queue[dict[str, object] | None] = asyncio.Queue()
+
+        async def publish(stage: ValidatedStage) -> None:
+            await queue.put({"type": "stage", "stage": stage.model_dump(mode="json")})
+
+        async def run_pipeline() -> None:
+            try:
+                response = await validated_memory_pipeline.run(
+                    case_id, ct_path, publish=publish
+                )
+                canonical_name = {
+                    "coronary_wall_calcification": "coronary_artery_wall_calcification"
+                }
+                snapshot = AnalyzeResponse(
+                    case_id=case_id,
+                    labels=[
+                        LabelOutput(
+                            name=canonical_name.get(item.name, item.name),
+                            status=item.status,
+                            confidence=item.confidence,
+                            source="ct",
+                            source_scores={"ct_model": item.ctclip_score},
+                            need_human_review=True,
+                        )
+                        for item in response.labels
+                    ],
+                    explanation_zh="9类冻结流水线病例结果，等待医生反馈。",
+                    disclaimer=settings.disclaimer,
+                    execution=ExecutionMetadata(input_mode="ct_only"),
+                    approval=HumanApproval(required=True, status="pending"),
+                )
+                agent.memory.record(
+                    AnalyzeRequest(
+                        case_id=case_id,
+                        session_id=session_id,
+                        ct_volume_path=str(ct_path),
+                        question="9类冻结流水线医生反馈",
+                    ),
+                    snapshot,
+                    plan=None,
+                )
+                await queue.put(
+                    {"type": "result", "response": response.model_dump(mode="json")}
+                )
+            except Exception as exc:
+                await queue.put(
+                    {
+                        "type": "error",
+                        "message": f"9类验证流水线失败：{type(exc).__name__}: {exc}",
+                    }
+                )
+            finally:
+                await queue.put(None)
+
+        task = asyncio.create_task(run_pipeline())
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                yield json.dumps(item, ensure_ascii=False) + "\n"
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 @app.post("/api/cases/{case_id}/feedback")
@@ -77,6 +167,18 @@ def review_feedback(event_id: str, review: FeedbackReview) -> dict[str, str]:
         return agent.memory.review_feedback(event_id, review.status, review.reviewer, review.note)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/memories")
+def list_memories(label: str | None = None) -> dict[str, object]:
+    return {
+        "experiment_id": settings.experience_memory_experiment_id,
+        "memories": agent.memory.list_experience_memories(
+            experiment_id=settings.experience_memory_experiment_id,
+            label=label,
+            fold=-1,
+        ),
+    }
 
 
 @app.get("/health")
@@ -320,6 +422,44 @@ async def analyze_modality(
         raise HTTPException(status_code=501, detail=str(exc)) from exc
     except (InputIngestionError, FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/validated-memory/upload/stream",
+    response_class=StreamingResponse,
+)
+async def validated_memory_upload_stream(
+    case_id: Annotated[str, Form()] = "validated_case",
+    session_id: Annotated[str, Form()] = "validated-memory",
+    ct_file: Annotated[UploadFile | None, File()] = None,
+) -> StreamingResponse:
+    if ct_file is None:
+        raise HTTPException(status_code=400, detail="该验证配置必须上传NIfTI胸部CT。")
+    try:
+        ct_path = ingest_ct_upload(
+            ct_file.filename or "uploaded_ct",
+            await ct_file.read(),
+            case_id,
+            settings.upload_dir,
+        )
+    except InputIngestionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _validated_memory_stream(case_id, ct_path, session_id)
+
+
+@app.post("/api/validated-memory/server/stream")
+async def validated_memory_server_stream(
+    request: ValidatedMemoryServerRequest,
+) -> StreamingResponse:
+    ct_path = Path(request.ct_volume_path).resolve()
+    allowed_root = settings.data_dir.resolve()
+    if not ct_path.is_relative_to(allowed_root):
+        raise HTTPException(status_code=403, detail="服务器病例路径不在允许的数据目录内。")
+    if not ct_path.is_file() or not (
+        ct_path.name.endswith(".nii") or ct_path.name.endswith(".nii.gz")
+    ):
+        raise HTTPException(status_code=404, detail="服务器NIfTI病例不存在。")
+    return _validated_memory_stream(request.case_id, ct_path, request.session_id)
 
 
 @app.post("/api/chat", response_model=ChatResponse)

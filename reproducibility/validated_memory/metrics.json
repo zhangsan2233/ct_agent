@@ -1,0 +1,54 @@
+{
+  "cases": 50,
+  "invalid_cases": 0,
+  "baseline": {
+    "accuracy": 0.6666666666666666,
+    "wrong": 150,
+    "micro_precision": 0.45689655172413796,
+    "micro_recall": 0.37857142857142856,
+    "micro_f1": 0.4140625,
+    "macro_f1": 0.30115151639994053,
+    "exact_match_cases": 1
+  },
+  "with_memory": {
+    "accuracy": 0.6711111111111111,
+    "wrong": 148,
+    "micro_precision": 0.4649122807017544,
+    "micro_recall": 0.37857142857142856,
+    "micro_f1": 0.41732283464566927,
+    "macro_f1": 0.30300336825179236,
+    "exact_match_cases": 1
+  },
+  "delta": {
+    "accuracy": 0.004444444444444473,
+    "micro_precision": 0.008015728977616432,
+    "micro_recall": 0.0,
+    "micro_f1": 0.0032603346456692717,
+    "macro_f1": 0.0018518518518518268
+  },
+  "accepted_changes": 2,
+  "beneficial_changes": 2,
+  "harmful_changes": 0,
+  "neutral_changes": 0,
+  "by_label": {
+    "consolidation": {
+      "accepted": 2,
+      "beneficial": 2,
+      "harmful": 0
+    }
+  },
+  "calibration": {
+    "cases": 100,
+    "positives": 19,
+    "selection": "maximize consolidation F1 on feedback100 only",
+    "threshold": 0.47500000000000003,
+    "f1": 0.38636363636363635,
+    "precision": 0.2463768115942029,
+    "recall": 0.8947368421052632,
+    "predicted_positive": 69,
+    "label": "consolidation",
+    "thresholds": {
+      "consolidation": 0.47500000000000003
+    }
+  }
+}

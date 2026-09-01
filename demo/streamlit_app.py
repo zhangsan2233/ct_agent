@@ -2,13 +2,16 @@ import asyncio
 from base64 import b64encode
 import csv
 from html import escape
+from io import BytesIO
 import json
 import os
 from pathlib import Path
 import uuid
 
 import httpx
+from PIL import Image, ImageDraw
 import streamlit as st
+from streamlit_image_coordinates import streamlit_image_coordinates
 
 from chestct_agent.agent.graph import ChestCtAgent
 from chestct_agent.config import get_settings
@@ -24,6 +27,7 @@ from chestct_agent.schemas import (
     CorrectionRequest,
     LabelCorrection,
 )
+from chestct_agent.validated_memory_pipeline import ValidatedMemoryResponse
 from demo.ui_theme import apply_ui_theme, render_product_header
 
 
@@ -49,6 +53,7 @@ NODE_NAME_ZH = {
     "rewrite_query_if_needed": "改写检索问题",
     "retrieve_similar_cases": "检索相似病例",
     "extract_evidence": "提取证据",
+    "run_stage2_fusion": "Qwen3.5 Stage-2八类复核",
     "check_consistency": "检查多模态一致性",
     "generate_json": "生成结构化结果",
     "validate_output": "校验输出",
@@ -75,6 +80,7 @@ TOOL_PURPOSE_ZH = {
     "medical_rag_tool": "执行 BM25、Dense、RRF 和 Qwen Reranker 检索",
     "similar_case_retriever_tool": "检索非当前病例的 CT-RATE 相似病例",
     "evidence_extractor_tool": "抽取阳性、阴性、不确定和历史报告证据",
+    "stage2_fusion_tool": "调用服务器微调Qwen3.5，融合报告与CT-CLIP分数复核8类标签",
     "consistency_checker_tool": "融合 CT 与报告并识别冲突",
     "structured_output_generator": "生成统一的 18 类结构化结果",
     "json_validator_tool": "校验并约束最终 JSON",
@@ -88,6 +94,17 @@ TOOL_PURPOSE_ZH = {
     "human_correction_tool": "应用医生逐标签纠错并保留修改前后的审计记录",
     "dataset_oracle_tool": "在开发沙箱中使用隐藏弱标签反馈，不能用于正式评估",
 }
+
+FEEDBACK_QUEUE_LABELS = (
+    "arterial_wall_calcification",
+    "atelectasis",
+    "coronary_artery_wall_calcification",
+    "emphysema",
+    "lung_opacity",
+    "lymphadenopathy",
+    "pulmonary_fibrotic_sequela",
+    "pulmonary_nodule",
+)
 
 PLANNER_SOURCE_ZH = {
     "llm": "Qwen 动态规划",
@@ -241,6 +258,7 @@ WORKFLOW_NODE_PHASE = {
     "rewrite_query_if_needed": "retrieval",
     "retrieve_similar_cases": "retrieval",
     "extract_evidence": "fusion",
+    "run_stage2_fusion": "fusion",
     "check_consistency": "fusion",
     "generate_json": "delivery",
     "validate_output": "delivery",
@@ -580,7 +598,61 @@ def get_agent() -> ChestCtAgent:
 
 
 def configured_api_url() -> str:
-    return os.environ.get("CHESTCT_API_URL", "http://127.0.0.1:8080").strip()
+    return os.environ.get("CHESTCT_API_URL", "http://127.0.0.1:8082").strip()
+
+
+def _server_static_url(path_value: str | Path) -> str:
+    """Translate a server-side static path into the tunneled API URL."""
+    normalized = str(path_value).replace("\\", "/")
+    marker = "/static/"
+    if marker in normalized:
+        relative = normalized.split(marker, 1)[1].lstrip("/")
+    elif normalized.startswith("static/"):
+        relative = normalized.removeprefix("static/").lstrip("/")
+    else:
+        return ""
+    return configured_api_url().rstrip("/") + "/static/" + relative
+
+
+def _display_image_source(path_value: str | Path) -> str:
+    server_url = _server_static_url(path_value)
+    if server_url:
+        return server_url
+    path = Path(path_value)
+    return str(path) if path.exists() and path.is_file() else ""
+
+
+def _render_bbox_preview(
+    image_source: str,
+    bbox: list[int],
+    *,
+    display_width: int = 720,
+) -> Image.Image | None:
+    """Render display-coordinate feedback boxes on the same image scale as the editor."""
+    try:
+        if image_source.startswith(("http://", "https://")):
+            response = httpx.get(image_source, timeout=30)
+            response.raise_for_status()
+            image = Image.open(BytesIO(response.content)).convert("RGB")
+        else:
+            image = Image.open(image_source).convert("RGB")
+    except (OSError, httpx.HTTPError):
+        return None
+    if len(bbox) != 4 or image.width <= 0:
+        return None
+    display_height = max(1, round(image.height * display_width / image.width))
+    preview = image.resize((display_width, display_height), Image.Resampling.LANCZOS)
+    x1, y1, x2, y2 = [int(value) for value in bbox]
+    x1, x2 = sorted((max(0, min(display_width - 1, x1)), max(0, min(display_width - 1, x2))))
+    y1, y2 = sorted((max(0, min(display_height - 1, y1)), max(0, min(display_height - 1, y2))))
+    if x2 <= x1 or y2 <= y1:
+        return None
+    overlay = Image.new("RGBA", preview.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    draw.rectangle((x1, y1, x2, y2), fill=(255, 59, 48, 38), outline=(255, 59, 48, 255), width=5)
+    draw.rectangle((x1, max(0, y1 - 28), min(display_width - 1, x1 + 116), y1), fill=(255, 59, 48, 230))
+    draw.text((x1 + 8, max(2, y1 - 23)), "CLINICIAN ROI", fill="white")
+    return Image.alpha_composite(preview.convert("RGBA"), overlay).convert("RGB")
 
 
 def analyze_request(request: AnalyzeRequest, progress=None) -> AnalyzeResponse:
@@ -711,6 +783,544 @@ def analyze_upload_request(
         require_human_approval=require_human_approval,
     )
     return asyncio.run(get_agent().run(AgentState(request=request)))
+
+
+def analyze_server_validated_memory(
+    case_id: str,
+    ct_volume_path: str,
+    session_id: str,
+    progress=None,
+) -> ValidatedMemoryResponse:
+    final_response = None
+    with httpx.stream(
+        "POST",
+        configured_api_url().rstrip("/") + "/api/validated-memory/server/stream",
+        json={
+            "case_id": case_id,
+            "ct_volume_path": ct_volume_path,
+            "session_id": session_id,
+        },
+        timeout=1800,
+    ) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if not line:
+                continue
+            message = json.loads(line)
+            if message.get("type") == "stage" and progress is not None:
+                stage = message["stage"]
+                progress.write(
+                    f"{stage['name']} | {stage['summary']} | "
+                    f"{float(stage['latency_ms']):.0f} ms"
+                )
+            elif message.get("type") == "result":
+                final_response = message["response"]
+            elif message.get("type") == "error":
+                raise RuntimeError(str(message.get("message", "9类流水线失败")))
+    if final_response is None:
+        raise RuntimeError("9类流水线结束但没有返回结果。")
+    return ValidatedMemoryResponse.model_validate(final_response)
+
+
+VALIDATED_CANONICAL_LABEL = {
+    "coronary_wall_calcification": "coronary_artery_wall_calcification"
+}
+
+
+def render_validated_tool_inventory(response: ValidatedMemoryResponse) -> None:
+    retrieved_count = len(response.retrieved_memories)
+    st.subheader("本次实际调用的模型与工具")
+    st.dataframe(
+        [
+            {
+                "状态": "已调用",
+                "组件": "NIfTI切片工具",
+                "具体实现": "NiBabel + NumPy窗宽窗位",
+                "本次作用": "读取3D CT，均匀抽取24层，并生成肺窗/纵隔窗双窗图",
+            },
+            {
+                "状态": "已调用",
+                "组件": "全胸部视觉初筛",
+                "具体实现": "qwen/qwen3-vl-30b-a3b-instruct",
+                "本次作用": "不读取标签、报告和CT-CLIP分数，先独立判断9类异常",
+            },
+            {
+                "状态": "已调用",
+                "组件": "疾病分类工具",
+                "具体实现": "CT-CLIP v2 zero-shot",
+                "本次作用": "输出9类检查级概率，作为独立于Qwen视觉判断的工具证据",
+            },
+            {
+                "状态": "已调用",
+                "组件": "冲突裁决Agent",
+                "具体实现": "qwen/qwen3-vl-30b-a3b-instruct",
+                "本次作用": "重新查看24层双窗图，并结合CT-CLIP分数裁决冲突",
+            },
+            {
+                "状态": "已调用" if retrieved_count else "已执行但未命中",
+                "组件": "审核Memory检索",
+                "具体实现": "audited_candidates.json + 疾病/FP/FN规则检索",
+                "本次作用": f"检索到{retrieved_count}条同类错误经验，再次复查当前影像",
+            },
+            {
+                "状态": "已调用",
+                "组件": "CT-CLIP模型归因",
+                "具体实现": "Gradient × Token",
+                "本次作用": "把类别分数贡献映射回原始轴位切片，每类展示3张热图",
+            },
+            {
+                "状态": "本路径未调用",
+                "组件": "Qwen3.5微调版",
+                "具体实现": "8类Stage-2 QLoRA复核器",
+                "本次作用": "当前是9类冻结对照路径，为保持评估变量一致而未接入",
+            },
+            {
+                "状态": "本路径未调用",
+                "组件": "完整18类Agent模块",
+                "具体实现": "Qwen3.6规划、RadGraph、RAG、TotalSegmentator、病灶定位",
+                "本次作用": "这些模块位于完整Agent上传/开发样例路径，不属于本次9类冻结实验",
+            },
+        ],
+        hide_index=True,
+        width="stretch",
+    )
+
+
+def render_validated_memory_library(response: ValidatedMemoryResponse) -> None:
+    st.subheader("Memory库")
+    current_tab, clinician_tab = st.tabs(["本次检索Memory", "医生反馈Memory"])
+    with current_tab:
+        if response.retrieved_memories:
+            st.dataframe(
+                [
+                    {
+                        "Memory ID": item["memory_id"],
+                        "疾病": LABEL_ZH.get(item["label"], item["label"]),
+                        "触发条件": (
+                            "初答阳性，复查误报经验"
+                            if item["initial_status_trigger"] == "positive"
+                            else "初答阴性，复查漏诊经验"
+                        ),
+                        "支持病例": item["support_count"],
+                        "复查经验": item["recheck_instruction"],
+                    }
+                    for item in response.retrieved_memories
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+        else:
+            st.info("本病例没有命中已审核的同疾病、同错误类型Memory。")
+    with clinician_tab:
+        try:
+            memory_response = httpx.get(
+                configured_api_url().rstrip("/") + "/api/memories",
+                timeout=20,
+            )
+            memory_response.raise_for_status()
+            memories = memory_response.json().get("memories", [])
+        except httpx.HTTPError as exc:
+            st.error(f"Memory库读取失败：{exc}")
+            memories = []
+        if memories:
+            st.dataframe(
+                [
+                    {
+                        "Memory ID": item["id"],
+                        "来源病例": "、".join(item["source_case_ids"]),
+                        "疾病": LABEL_ZH.get(item["label"], item["label"]),
+                        "纠正": (
+                            f"{item['memory'].get('before_status', '')}→"
+                            f"{item['memory'].get('corrected_status', '')}"
+                        ),
+                        "医生经验": item["memory"].get("visual_lesson", ""),
+                        "标注区域数": len(item["memory"].get("annotations", [])),
+                    }
+                    for item in memories
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+        else:
+            st.info("尚无审核通过的医生反馈Memory。")
+
+
+def render_validated_clinician_feedback(
+    response: ValidatedMemoryResponse, session_id: str
+) -> None:
+    st.subheader("医生反馈与影像标注")
+    st.caption(
+        "先判断系统结论是否正确；需要定位时，可在原始CT上按住鼠标拖拽矩形。"
+        "提交后进入pending队列，审核通过后才写入Memory库。"
+    )
+    label_by_name = {item.name: item for item in response.labels}
+    selected_name = st.selectbox(
+        "反馈疾病",
+        list(label_by_name),
+        format_func=lambda name: label_by_name[name].name_zh,
+        key=f"validated_feedback_label::{response.case_id}",
+    )
+    selected = label_by_name[selected_name]
+    canonical_name = VALIDATED_CANONICAL_LABEL.get(selected_name, selected_name)
+    attribution = response.model_attributions.get(canonical_name)
+    annotation: dict[str, object] | None = None
+    if attribution and attribution.original_images:
+        slice_options = list(range(len(attribution.original_images)))
+        image_index = st.selectbox(
+            "标注切片",
+            slice_options,
+            format_func=lambda index: f"原始 slice {attribution.slice_indices[index]}",
+            key=f"validated_feedback_slice::{response.case_id}::{selected_name}",
+        )
+        image_path = attribution.original_images[image_index]
+        image_source = _display_image_source(image_path)
+        if image_source:
+            slice_index = attribution.slice_indices[image_index]
+            bbox_state_key = (
+                f"validated_bbox_value::{response.case_id}::{selected_name}::"
+                f"{slice_index}"
+            )
+            bbox_revision_key = bbox_state_key + "::revision"
+            saved_bbox = st.session_state.get(bbox_state_key)
+            if saved_bbox and st.button(
+                "清除标注框",
+                icon=":material/delete_outline:",
+                key=bbox_state_key + "::clear",
+            ):
+                st.session_state.pop(bbox_state_key, None)
+                st.session_state[bbox_revision_key] = (
+                    int(st.session_state.get(bbox_revision_key, 0)) + 1
+                )
+                st.rerun()
+
+            editor_source: str | Image.Image = image_source
+            if isinstance(saved_bbox, list):
+                boxed_source = _render_bbox_preview(image_source, saved_bbox)
+                if boxed_source is not None:
+                    editor_source = boxed_source
+            coordinates = streamlit_image_coordinates(
+                editor_source,
+                width=720,
+                click_and_drag=True,
+                cursor="crosshair",
+                key=(
+                    f"validated_bbox::{response.case_id}::{selected_name}::"
+                    f"{slice_index}::"
+                    f"{int(st.session_state.get(bbox_revision_key, 0))}"
+                ),
+            )
+            if coordinates and all(
+                key in coordinates for key in ("x1", "y1", "x2", "y2")
+            ):
+                x1, x2 = sorted([int(coordinates["x1"]), int(coordinates["x2"])])
+                y1, y2 = sorted([int(coordinates["y1"]), int(coordinates["y2"])])
+                if x2 > x1 and y2 > y1:
+                    new_bbox = [x1, y1, x2, y2]
+                    if new_bbox != saved_bbox:
+                        st.session_state[bbox_state_key] = new_bbox
+                        st.rerun()
+
+            active_bbox = st.session_state.get(bbox_state_key)
+            if isinstance(active_bbox, list) and len(active_bbox) == 4:
+                annotation = {
+                    "slice_index": slice_index,
+                    "image_path": image_path,
+                    "bbox_2d": active_bbox,
+                    "note": f"医生框选{selected.name_zh}可疑区域",
+                }
+                st.success(
+                    f"已在当前CT图上标注 slice {slice_index}：{active_bbox}"
+                )
+        else:
+            st.warning("该切片图片当前无法访问，仍可提交文字反馈。")
+    else:
+        st.info("该标签没有原始归因切片，可提交文字反馈但不能框选区域。")
+
+    with st.form(f"validated_feedback_form::{response.case_id}::{selected_name}"):
+        reviewer = st.text_input(
+            "复核医生/标注员",
+            placeholder="填写脱敏工号或姓名缩写",
+        )
+        correctness = st.radio(
+            "系统判断是否正确",
+            ["正确", "错误"],
+            horizontal=True,
+        )
+        corrected_status = selected.status
+        if correctness == "错误":
+            corrected_status = st.selectbox(
+                "医生结论",
+                ["positive", "negative"],
+                index=0 if selected.status == "negative" else 1,
+                format_func=lambda status: "阳性" if status == "positive" else "阴性",
+            )
+        reason = st.text_area(
+            "反馈依据",
+            placeholder="例如：slice 118右下肺可见连续条片状密度增高，支持肺不张。",
+        )
+        submitted = st.form_submit_button(
+            "提交医生反馈",
+            type="primary",
+            icon=":material/fact_check:",
+            width="stretch",
+        )
+    if submitted:
+        if not reviewer.strip():
+            st.error("必须填写复核者。")
+        elif correctness == "错误" and not reason.strip():
+            st.error("判断为错误时必须填写影像或临床依据。")
+        else:
+            payload = {
+                "session_id": session_id,
+                "reviewer": reviewer.strip(),
+                "reviewer_role": "clinician",
+                "model_version": "patchchestct-9label-agent-tools-memory-v1",
+                "items": [
+                    {
+                        "label": canonical_name,
+                        "corrected_status": corrected_status,
+                        "reason": reason.strip()
+                        or f"医生确认{selected.name_zh}结论正确。",
+                        "annotations": [annotation] if annotation else [],
+                    }
+                ],
+            }
+            try:
+                feedback_response = httpx.post(
+                    configured_api_url().rstrip("/")
+                    + f"/api/cases/{response.case_id}/feedback",
+                    json=payload,
+                    timeout=60,
+                )
+                feedback_response.raise_for_status()
+            except httpx.HTTPError as exc:
+                st.error(f"反馈提交失败：{exc}")
+            else:
+                st.success("反馈已进入pending队列，尚未影响当前结论或Memory。")
+
+    try:
+        pending_response = httpx.get(
+            configured_api_url().rstrip("/") + "/api/feedback",
+            params={"status": "pending", "limit": 100},
+            timeout=20,
+        )
+        pending_response.raise_for_status()
+        pending = [
+            item
+            for item in pending_response.json().get("events", [])
+            if item.get("case_id") == response.case_id
+        ]
+    except httpx.HTTPError:
+        pending = []
+    if pending:
+        st.markdown(f"**本病例待审核反馈：{len(pending)} 条**")
+        st.dataframe(
+            [
+                {
+                    "事件ID": item["id"],
+                    "疾病": LABEL_ZH.get(item["label"], item["label"]),
+                    "原状态": item["before_status"],
+                    "医生结论": item["corrected_status"],
+                    "依据": item["reason"],
+                    "框选区域": len(item.get("annotations", [])),
+                }
+                for item in pending
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+        annotated_events = [
+            item for item in pending if item.get("annotations")
+        ]
+        if annotated_events:
+            with st.expander("查看已提交的影像标注框", expanded=True):
+                for event in annotated_events:
+                    st.markdown(
+                        f"**{LABEL_ZH.get(event['label'], event['label'])}** · "
+                        f"事件 `{event['id'][:8]}`"
+                    )
+                    for saved_annotation in event.get("annotations", []):
+                        saved_source = _display_image_source(
+                            saved_annotation.get("image_path", "")
+                        )
+                        saved_bbox = saved_annotation.get("bbox_2d", [])
+                        saved_preview = (
+                            _render_bbox_preview(saved_source, saved_bbox)
+                            if saved_source and isinstance(saved_bbox, list)
+                            else None
+                        )
+                        if saved_preview is not None:
+                            st.image(
+                                saved_preview,
+                                caption=(
+                                    f"slice {saved_annotation.get('slice_index', '?')} · "
+                                    f"bbox {saved_bbox}"
+                                ),
+                                width=720,
+                            )
+                        else:
+                            st.warning("该条反馈的标注图片当前无法加载。")
+        with st.form(f"feedback_review::{response.case_id}"):
+            selected_event = st.selectbox(
+                "待审核事件",
+                [item["id"] for item in pending],
+                format_func=lambda event_id: next(
+                    f"{LABEL_ZH.get(item['label'], item['label'])} · {event_id[:8]}"
+                    for item in pending
+                    if item["id"] == event_id
+                ),
+            )
+            audit_reviewer = st.text_input("审核人", placeholder="填写独立审核者")
+            audit_status = st.radio(
+                "审核决定", ["approved", "rejected"], horizontal=True
+            )
+            audit_note = st.text_input("审核备注")
+            review_submitted = st.form_submit_button("提交审核决定")
+        if review_submitted:
+            if not audit_reviewer.strip():
+                st.error("必须填写独立审核人。")
+            else:
+                try:
+                    review_response = httpx.post(
+                        configured_api_url().rstrip("/")
+                        + f"/api/feedback/{selected_event}/review",
+                        json={
+                            "status": audit_status,
+                            "reviewer": audit_reviewer.strip(),
+                            "note": audit_note.strip(),
+                        },
+                        timeout=30,
+                    )
+                    review_response.raise_for_status()
+                except httpx.HTTPError as exc:
+                    st.error(f"反馈审核失败：{exc}")
+                else:
+                    result = review_response.json()
+                    if result.get("memory_id"):
+                        st.success(
+                            "反馈已批准并写入Memory库：" + result["memory_id"]
+                        )
+                    else:
+                        st.success("反馈已完成审核。")
+                    st.rerun()
+
+
+def render_validated_memory_result(response: ValidatedMemoryResponse) -> None:
+    positive = [item.name_zh for item in response.labels if item.status == "positive"]
+    negative = [item.name_zh for item in response.labels if item.status == "negative"]
+    st.markdown('<div class="workspace-kicker">CONTROLLED 9-LABEL RESULT</div>', unsafe_allow_html=True)
+    st.header("检出：" + ("、".join(positive) if positive else "9类均未检出"))
+    st.caption("PatchChestCT冻结配置 · CT盲测 · Agent + CT-CLIP工具 + 审核Memory")
+    metrics = st.columns(4)
+    metrics[0].metric("阳性", len(positive))
+    metrics[1].metric("阴性", len(negative))
+    metrics[2].metric("Memory采纳修改", response.accepted_memory_changes)
+    metrics[3].metric("总耗时", f"{response.total_latency_ms / 1000:.1f}s")
+    render_validated_tool_inventory(response)
+    st.subheader("逐标签报告")
+    st.dataframe(
+        [
+            {
+                "异常": item.name_zh,
+                "结论": "检出" if item.status == "positive" else "未检出",
+                "置信度": round(item.confidence, 3),
+                "初筛": "阳性" if item.initial_status == "positive" else "阴性",
+                "CT-CLIP": round(item.ctclip_score, 3),
+                "Memory修改": "已采纳" if item.memory_change_accepted else "未采纳",
+                "图像依据": item.evidence,
+            }
+            for item in response.labels
+        ],
+        hide_index=True,
+        width="stretch",
+    )
+    st.subheader("可审计流程")
+    st.dataframe(
+        [
+            {
+                "阶段": stage.name,
+                "结果": stage.status,
+                "摘要": stage.summary,
+                "耗时(ms)": round(stage.latency_ms),
+            }
+            for stage in response.stages
+        ],
+        hide_index=True,
+        width="stretch",
+    )
+    st.subheader("Qwen实际查看的24层双窗图")
+    image_urls = []
+    for path in response.sheet_paths:
+        marker = "/static/"
+        if marker in path.replace("\\", "/"):
+            relative = path.replace("\\", "/").split(marker, 1)[1]
+            image_urls.append(configured_api_url().rstrip("/") + "/static/" + relative)
+    if image_urls:
+        st.image(image_urls, width="stretch")
+    st.subheader("CT-CLIP模型归因图")
+    st.caption(
+        "Gradient × Token 归因解释CT-CLIP各类别分数的空间贡献；"
+        "它不是病灶分割，也不作为独立诊断依据。"
+    )
+    if response.model_attributions:
+        attribution_names = list(response.model_attributions)
+        selected_label = st.selectbox(
+            "查看归因标签",
+            attribution_names,
+            format_func=lambda name: LABEL_ZH.get(name, name),
+            key=f"validated_attribution_label::{response.case_id}",
+        )
+        attribution = response.model_attributions[selected_label]
+        overlay_sources = [
+            _display_image_source(path)
+            for path in attribution.overlay_images
+            if _display_image_source(path)
+        ]
+        original_sources = [
+            _display_image_source(path)
+            for path in attribution.original_images
+            if _display_image_source(path)
+        ]
+        mode_images = {
+            mode: images
+            for mode, images in (
+                ("模型归因", overlay_sources),
+                ("原始CT", original_sources),
+            )
+            if images
+        }
+        if mode_images:
+            selected_mode = st.segmented_control(
+                "归因影像模式",
+                list(mode_images),
+                default=(
+                    "模型归因"
+                    if "模型归因" in mode_images
+                    else next(iter(mode_images))
+                ),
+                key=f"validated_attribution_mode::{response.case_id}",
+                width="stretch",
+            )
+            selected_mode = selected_mode or next(iter(mode_images))
+            st.image(
+                mode_images[selected_mode],
+                caption=[f"原始 slice {index}" for index in attribution.slice_indices],
+                width="stretch",
+            )
+        else:
+            st.warning("归因记录存在，但服务器图片地址当前不可访问。")
+        st.caption(
+            f"目标：{LABEL_ZH.get(selected_label, selected_label)} · "
+            f"CT-CLIP分数 {attribution.target_score:.2f} · 方法 Gradient × Token"
+        )
+    else:
+        st.warning("本次9类冻结流水线没有返回归因体，请重新运行该病例生成归因图。")
+    benchmark = response.benchmark
+    st.caption(
+        f"冻结{benchmark.get('cases', 0)}例：Micro-F1 "
+        f"{float(benchmark.get('micro_f1', 0)):.2%}，Macro-F1 "
+        f"{float(benchmark.get('macro_f1', 0)):.2%}。仅适用于上述9类。"
+    )
 
 
 def submit_human_corrections(
@@ -1074,14 +1684,14 @@ def render_candidate_evidence(response: AnalyzeResponse) -> None:
                 for index, (column, image_path) in enumerate(
                     zip(image_columns, images, strict=False)
                 ):
-                    path = Path(image_path)
-                    if not path.exists():
+                    image_source = _display_image_source(image_path)
+                    if not image_source:
                         continue
-                    caption = path.name
+                    caption = Path(str(image_path).replace("\\", "/")).name
                     if attribution and selected_mode in {"原始CT", "模型归因"}:
                         if index < len(attribution.slice_indices):
                             caption = f"原始 slice {attribution.slice_indices[index]}"
-                    column.image(str(path), caption=caption, width="stretch")
+                    column.image(image_source, caption=caption, width="stretch")
 
             unavailable_modes = [
                 mode
@@ -1150,6 +1760,9 @@ def render_model_reasoning(response: AnalyzeResponse) -> None:
 
 
 def _local_image_data_url(path_value: str | Path) -> str:
+    server_url = _server_static_url(path_value)
+    if server_url:
+        return server_url
     path = Path(path_value)
     if not path.exists() or not path.is_file():
         return ""
@@ -1322,9 +1935,13 @@ def render_analysis_result(response: AnalyzeResponse) -> None:
             for column, image_path in zip(
                 preview_columns, response.ct_preview_images, strict=False
             ):
-                path = Path(image_path)
-                if path.exists():
-                    column.image(str(path), caption=path.name, width="stretch")
+                image_source = _display_image_source(image_path)
+                if image_source:
+                    column.image(
+                        image_source,
+                        caption=Path(str(image_path).replace("\\", "/")).name,
+                        width="stretch",
+                    )
         if response.diagnostic_evidence:
             st.subheader("独立专病影像工具")
             st.caption(
@@ -1345,11 +1962,21 @@ def render_analysis_result(response: AnalyzeResponse) -> None:
                         metric_columns, item.metrics.items(), strict=False
                     ):
                         column.metric(name.replace("_", " "), value)
-                    previews = [Path(path) for path in item.preview_images if Path(path).exists()]
+                    previews = [
+                        (path, _display_image_source(path))
+                        for path in item.preview_images
+                        if _display_image_source(path)
+                    ]
                     if previews:
                         image_columns = st.columns(min(3, len(previews)))
-                        for column, path in zip(image_columns, previews[:3], strict=False):
-                            column.image(str(path), caption=path.name, width="stretch")
+                        for column, (path, source) in zip(
+                            image_columns, previews[:3], strict=False
+                        ):
+                            column.image(
+                                source,
+                                caption=Path(str(path).replace("\\", "/")).name,
+                                width="stretch",
+                            )
         if response.qwen_visual_reviews:
             visual_model = response.execution.slice_vlm_model
             st.subheader("Gemma 4关键切片复核")
@@ -1361,9 +1988,13 @@ def render_analysis_result(response: AnalyzeResponse) -> None:
             for column, image_path in zip(
                 visual_columns, response.qwen_visual_images[:4], strict=False
             ):
-                path = Path(image_path)
-                if path.exists():
-                    column.image(str(path), caption=path.name, width="stretch")
+                image_source = _display_image_source(image_path)
+                if image_source:
+                    column.image(
+                        image_source,
+                        caption=Path(str(image_path).replace("\\", "/")).name,
+                        width="stretch",
+                    )
             st.dataframe(
                 [
                     {
@@ -1617,6 +2248,184 @@ def render_correction_loop(
     st.rerun()
 
 
+def render_eight_label_feedback_queue(
+    response: AnalyzeResponse, session_id: str
+) -> None:
+    st.divider()
+    with st.expander("8 类医生纠错与反馈队列", expanded=False):
+        st.caption(
+            "这里用于积累可审核的训练反馈。提交后状态为 pending，不立即修改本次结论；"
+            "只有后续审核为 approved 的记录才可进入候选 SFT 数据。"
+        )
+        predictions = {item.name: item for item in response.labels}
+        rows = []
+        for label in FEEDBACK_QUEUE_LABELS:
+            prediction = predictions.get(label)
+            if prediction is None:
+                continue
+            rows.append(
+                {
+                    "label": label,
+                    "异常": LABEL_ZH.get(label, label),
+                    "当前状态": prediction.status,
+                    "医生纠正为": prediction.status,
+                    "反馈依据": "",
+                }
+            )
+
+        with st.form(f"feedback_queue_form::{response.case_id}"):
+            reviewer = st.text_input(
+                "复核医生/标注员",
+                placeholder="填写脱敏工号或姓名缩写",
+                key=f"feedback_reviewer::{response.case_id}",
+            )
+            edited = st.data_editor(
+                rows,
+                hide_index=True,
+                width="stretch",
+                disabled=["label", "异常", "当前状态"],
+                column_config={
+                    "label": None,
+                    "医生纠正为": st.column_config.SelectboxColumn(
+                        options=["positive", "negative", "uncertain"],
+                        required=True,
+                    ),
+                    "反馈依据": st.column_config.TextColumn(
+                        help="填写支持纠正的切片、报告、病理、随访或其他事实依据"
+                    ),
+                },
+                key=f"feedback_queue_editor::{response.case_id}",
+            )
+            submitted = st.form_submit_button(
+                "提交到 pending 队列",
+                type="primary",
+                icon=":material/playlist_add_check:",
+                width="stretch",
+            )
+
+        if submitted:
+            edited_rows = (
+                edited.to_dict(orient="records")
+                if hasattr(edited, "to_dict")
+                else edited
+            )
+            items = [
+                {
+                    "label": str(row["label"]),
+                    "corrected_status": str(row["医生纠正为"]),
+                    "reason": str(row.get("反馈依据", "")).strip(),
+                }
+                for row in edited_rows
+                if row["医生纠正为"] != row["当前状态"]
+            ]
+            if not reviewer.strip():
+                st.error("必须填写复核者，反馈记录不能匿名进入训练队列。")
+            elif not items:
+                st.warning("没有标签状态变更，未提交反馈。")
+            else:
+                payload = {
+                    "session_id": session_id,
+                    "reviewer": reviewer.strip(),
+                    "reviewer_role": "clinician",
+                    "model_version": "ct:qwen3.6-agent-tools-memory-v1",
+                    "items": items,
+                }
+                try:
+                    result = httpx.post(
+                        configured_api_url().rstrip("/")
+                        + f"/api/cases/{response.case_id}/feedback",
+                        json=payload,
+                        timeout=60,
+                    )
+                    result.raise_for_status()
+                except httpx.HTTPError as exc:
+                    st.error(f"反馈入队失败：{exc}")
+                else:
+                    event_count = len(result.json().get("events", []))
+                    st.success(f"已提交 {event_count} 条 pending 反馈，等待独立审核。")
+
+        try:
+            pending_response = httpx.get(
+                configured_api_url().rstrip("/") + "/api/feedback",
+                params={"status": "pending", "limit": 100},
+                timeout=20,
+            )
+            pending_response.raise_for_status()
+            pending = [
+                item
+                for item in pending_response.json().get("events", [])
+                if item.get("case_id") == response.case_id
+            ]
+        except httpx.HTTPError:
+            pending = []
+        if pending:
+            st.markdown(f"**本病例待审核反馈：{len(pending)} 条**")
+            st.dataframe(
+                [
+                    {
+                        "异常": LABEL_ZH.get(item["label"], item["label"]),
+                        "原状态": item["before_status"],
+                        "纠正为": item["corrected_status"],
+                        "复核者": item["reviewer"],
+                        "依据": item["reason"],
+                        "状态": item["status"],
+                    }
+                    for item in pending
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+
+
+def render_feedback_queue_overview() -> None:
+    st.divider()
+    with st.expander("8 类医生纠错与反馈队列", expanded=False):
+        st.caption(
+            "该队列使用8类Stage-2固定标签口径，与当前9类PatchChestCT冻结演示结果分开保存。"
+            "这里只展示待审核训练反馈；完整Agent病例页可提交新的逐标签反馈。"
+        )
+        try:
+            response = httpx.get(
+                configured_api_url().rstrip("/") + "/api/feedback",
+                params={"limit": 100},
+                timeout=20,
+            )
+            response.raise_for_status()
+            events = [
+                item
+                for item in response.json().get("events", [])
+                if item.get("label") in FEEDBACK_QUEUE_LABELS
+            ]
+        except httpx.HTTPError as exc:
+            st.error(f"反馈队列读取失败：{exc}")
+            return
+        pending = [item for item in events if item.get("status") == "pending"]
+        approved = [item for item in events if item.get("status") == "approved"]
+        metrics = st.columns(3)
+        metrics[0].metric("待审核", len(pending))
+        metrics[1].metric("已批准", len(approved))
+        metrics[2].metric("最近记录", len(events))
+        if not events:
+            st.info("当前还没有8类反馈记录。完成完整Agent病例分析后即可提交。")
+            return
+        st.dataframe(
+            [
+                {
+                    "病例": item["case_id"],
+                    "异常": LABEL_ZH.get(item["label"], item["label"]),
+                    "原状态": item["before_status"],
+                    "纠正为": item["corrected_status"],
+                    "复核者": item["reviewer"],
+                    "依据": item["reason"],
+                    "状态": item["status"],
+                }
+                for item in events
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+
+
 def render_case_chat(response: AnalyzeResponse, session_id: str) -> None:
     st.divider()
     st.subheader("病例多轮问答")
@@ -1720,15 +2529,16 @@ with st.sidebar:
     st.markdown("### 工作区")
     workspace_mode = st.segmented_control(
         "数据来源",
-        ["上传检查", "开发样例"],
-        default="上传检查",
+        ["上传本机检查", "选择服务器病例", "本地开发样例"],
+        default="选择服务器病例",
         selection_mode="single",
         width="stretch",
     )
     st.divider()
     st.caption(f"会话 {session_id[:8]}")
 
-developer_demo = workspace_mode == "开发样例"
+developer_demo = workspace_mode != "上传本机检查"
+server_demo = workspace_mode == "选择服务器病例"
 default_question = (
     "该检查可能存在哪些胸部异常，位于哪些区域，有什么报告和图像证据？"
     "请检索相关医学知识和相似病例。"
@@ -1770,26 +2580,98 @@ if not developer_demo:
             )
     selected_path = None
 else:
-    volume_paths = sorted(Path("data/dataset/valid_fixed").rglob("*.nii.gz"))
-    volume_by_name = {path.name: path.resolve() for path in volume_paths}
+    if server_demo:
+        volume_by_name = {
+            "train_10766_a_1 | 肺不张（实验候选）": {
+                "path": (
+                    "/root/summer_zhl/data/train_fixed/train_10766/train_10766_a/"
+                    "train_10766_a_1.nii.gz"
+                ),
+                "source_name": "train_10766_a_1.nii.gz",
+                "reference": "PatchChestCT 9类参考：仅肺不张阳性；实时视觉结果存在波动",
+            },
+            "train_1095_a_1 | 动脉壁钙化": {
+                "path": (
+                    "/root/summer_zhl/data/train_fixed/train_1095/train_1095_a/"
+                    "train_1095_a_1.nii.gz"
+                ),
+                "source_name": "train_1095_a_1.nii.gz",
+                "reference": "PatchChestCT 9类参考：仅动脉壁钙化阳性",
+            },
+            "train_10322_a_1 | 肺部密度增高影": {
+                "path": (
+                    "/root/summer_zhl/data/train_fixed/train_10322/train_10322_a/"
+                    "train_10322_a_1.nii.gz"
+                ),
+                "source_name": "train_10322_a_1.nii.gz",
+                "reference": "PatchChestCT 9类参考：仅肺部密度增高影阳性",
+            },
+            "train_10390_a_1 | 动脉壁钙化、支气管扩张": {
+                "path": (
+                    "/root/summer_zhl/data/train_fixed/train_10390/train_10390_a/"
+                    "train_10390_a_1.nii.gz"
+                ),
+                "source_name": "train_10390_a_1.nii.gz",
+                "reference": "PatchChestCT 9类参考：动脉壁钙化、支气管扩张阳性",
+            },
+            "train_11307_a_1 | 动脉壁钙化": {
+                "path": (
+                    "/root/summer_zhl/data/train_fixed/train_11307/train_11307_a/"
+                    "train_11307_a_1.nii.gz"
+                ),
+                "source_name": "train_11307_a_1.nii.gz",
+                "reference": "PatchChestCT 9类参考：仅动脉壁钙化阳性",
+            },
+            "train_10146_a_1 | 动脉壁钙化": {
+                "path": (
+                    "/root/summer_zhl/data/train_fixed/train_10146/train_10146_a/"
+                    "train_10146_a_1.nii.gz"
+                ),
+                "source_name": "train_10146_a_1.nii.gz",
+                "reference": "PatchChestCT 9类参考：仅动脉壁钙化阳性",
+            },
+        }
+    else:
+        volume_paths = sorted(Path("data/dataset/valid_fixed").rglob("*.nii.gz"))
+        volume_by_name = {
+            path.name: {
+                "path": str(path.resolve()),
+                "source_name": path.name,
+                "reference": "CT-RATE本地开发样例",
+            }
+            for path in volume_paths
+        }
     reports = load_validation_reports(
         "data/dataset/radiology_text_reports/validation_reports.csv"
     )
     st.markdown('<div class="workspace-kicker">DEVELOPMENT DATA</div>', unsafe_allow_html=True)
-    st.subheader("开发样例")
+    st.subheader("服务器病例" if server_demo else "本地开发样例")
+    case_names = list(volume_by_name)
+    default_case_index = (
+        case_names.index("train_10322_a_1 | 肺部密度增高影")
+        if server_demo
+        else 0
+    )
     with st.form("developer_demo_form"):
-        selected_case = st.selectbox("CT-RATE 样例", list(volume_by_name), index=0)
-        selected_path = volume_by_name[selected_case]
-        case_id = selected_case.removesuffix(".nii.gz")
+        selected_case = st.selectbox(
+            "服务器病例" if server_demo else "CT-RATE 样例",
+            case_names,
+            index=default_case_index,
+        )
+        selected_record = volume_by_name[selected_case]
+        selected_path = selected_record["path"]
+        selected_source_name = selected_record["source_name"]
+        case_id = selected_source_name.removesuffix(".nii.gz")
+        st.caption(selected_record["reference"])
         question = st.text_input("测试问题", value=default_question)
         report_text = st.text_area(
             "数据集报告",
-            value=reports.get(selected_case, ""),
+            value=reports.get(selected_source_name, ""),
             height=120,
         )
         require_human_approval = st.checkbox("强制人工复核", value=False)
         analysis_clicked = st.form_submit_button(
-            "运行开发样例",
+            "运行服务器病例" if server_demo else "运行开发样例",
             type="primary",
             icon=":material/play_arrow:",
             width="stretch",
@@ -1799,21 +2681,30 @@ else:
 
 if analysis_clicked:
     st.session_state.pop("analysis_response", None)
+    st.session_state.pop("validated_memory_response", None)
     st.session_state.pop("analysis_session_id", None)
     live_status = None
     try:
         if developer_demo:
             with st.status("Agent 正在执行", expanded=True) as live_status:
-                request = AnalyzeRequest(
-                    case_id=case_id,
-                    session_id=session_id,
-                    report_text=report_text,
-                    question=question,
-                    ct_volume_path=str(selected_path),
-                    ct_source_name=selected_path.name,
-                    require_human_approval=require_human_approval,
-                )
-                response = analyze_request(request, progress=live_status)
+                if server_demo:
+                    validated_response = analyze_server_validated_memory(
+                        case_id,
+                        str(selected_path),
+                        session_id,
+                        progress=live_status,
+                    )
+                else:
+                    request = AnalyzeRequest(
+                        case_id=case_id,
+                        session_id=session_id,
+                        report_text=report_text,
+                        question=question,
+                        ct_volume_path=str(selected_path),
+                        ct_source_name=selected_source_name,
+                        require_human_approval=require_human_approval,
+                    )
+                    response = analyze_request(request, progress=live_status)
                 live_status.update(
                     label="Agent 工作流完成", state="complete", expanded=False
                 )
@@ -1835,9 +2726,26 @@ if analysis_clicked:
             live_status.update(label="Agent 工作流失败", state="error", expanded=True)
         st.error(f"无法开始分析：{exc}")
         st.stop()
-    st.session_state.analysis_response = response.model_dump(mode="json")
+    if server_demo:
+        st.session_state.validated_memory_response = validated_response.model_dump(
+            mode="json"
+        )
+    else:
+        st.session_state.analysis_response = response.model_dump(mode="json")
     st.session_state.analysis_session_id = session_id
 
+
+validated_stored = st.session_state.get("validated_memory_response")
+if validated_stored:
+    validated_response = ValidatedMemoryResponse.model_validate(validated_stored)
+    render_validated_memory_result(validated_response)
+    render_validated_clinician_feedback(
+        validated_response,
+        st.session_state.get("analysis_session_id", session_id),
+    )
+    render_validated_memory_library(validated_response)
+    render_feedback_queue_overview()
+    st.stop()
 
 stored_response = st.session_state.get("analysis_response")
 if stored_response:
@@ -1847,6 +2755,10 @@ if stored_response:
         response,
         st.session_state.get("analysis_session_id", session_id),
         developer_demo,
+    )
+    render_eight_label_feedback_queue(
+        response,
+        st.session_state.get("analysis_session_id", session_id),
     )
     if developer_demo:
         render_dataset_case_evaluation(response)
